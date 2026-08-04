@@ -1,0 +1,2949 @@
+openapi: 3.1.0
+info:
+  title: Kosto-Vet API
+  version: 0.5.0
+  description: Demo-release API contract for the FastAPI backend. Every operation explicitly declares its access class. Disabled future capabilities return FEATURE_DISABLED and do not imitate success.
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.kosto-vet.ru
+    description: Production API
+  - url: http://localhost:8000
+    description: Local FastAPI
+tags:
+  - name: Health
+    description: Liveness and readiness endpoints.
+  - name: Catalog
+    description: Public product catalog and search.
+  - name: Settings
+    description: Public non-secret storefront configuration.
+  - name: Leads
+    description: Contact, urgent, and stock notification requests.
+  - name: Orders
+    description: B2B and B2C order workflows.
+  - name: Payments
+    description: Robokassa payment attempts and callbacks.
+  - name: Customer Auth
+    description: Password and Yandex ID authentication.
+  - name: Account
+    description: Customer profile, manager, and order history.
+  - name: Cart
+    description: Persistent customer and guest carts.
+  - name: Favorites
+    description: Customer saved products.
+  - name: Media
+    description: Product media read models. Manager upload is outside the demo release.
+  - name: Admin Auth
+    description: Staff authentication and sessions.
+  - name: Admin
+    description: Manager and administrator operations.
+  - name: Integrations
+    description: Integration state and manual recovery operations.
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      operationId: getLiveness
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      operationId: getReadiness
+      security: []
+      responses:
+        "200":
+          description: Service can accept traffic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Required dependency or database migration is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/catalog/categories:
+    get:
+      tags: [Catalog]
+      summary: Get the published category tree
+      operationId: listCategories
+      security: []
+      responses:
+        "200":
+          description: Root categories with recursively nested children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryTreeResponse"
+
+  /api/v1/catalog/categories/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Get one published category with ancestors and its subtree
+      operationId: getCategory
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      responses:
+        "200":
+          description: Category, ordered ancestors, and recursively nested published descendants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/settings/public:
+    get:
+      tags: [Settings]
+      summary: Get public storefront settings
+      operationId: getPublicSettings
+      security: []
+      responses:
+        "200":
+          description: Public non-secret settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSettings"
+
+  /api/v1/catalog/products:
+    get:
+      tags: [Catalog]
+      summary: List products
+      operationId: listProducts
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CategorySlug"
+        - $ref: "#/components/parameters/IncludeDescendants"
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: in_stock
+          in: query
+          schema:
+            type: boolean
+        - name: stock_state
+          in: query
+          schema:
+            $ref: "#/components/schemas/StockState"
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [popular, price_asc, price_desc, name_asc, stock_desc]
+            default: popular
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 24
+      responses:
+        "200":
+          description: Product page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductListResponse"
+        "404":
+          description: The requested category does not exist or is not published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/catalog/products/{slug}:
+    get:
+      tags: [Catalog]
+      summary: Get product detail
+      operationId: getProduct
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/catalog/search-suggestions:
+    get:
+      tags: [Catalog]
+      summary: Get search suggestions
+      operationId: getSearchSuggestions
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 80
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SearchSuggestion"
+
+  /api/v1/leads:
+    post:
+      tags: [Leads]
+      summary: Create contact/request lead
+      operationId: createLead
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadRequest"
+      responses:
+        "202":
+          description: Lead accepted and persisted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/stock-subscriptions:
+    post:
+      tags: [Leads]
+      summary: Store a back-in-stock request; delivery is disabled in demo
+      operationId: createStockSubscription
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockSubscriptionRequest"
+      responses:
+        "202":
+          description: Request persisted locally; no automatic notification is promised in demo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/orders/quote:
+    post:
+      tags: [Orders]
+      summary: Create local B2B request without invoice or stock reservation
+      operationId: createQuoteOrder
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateQuoteOrderRequest"
+      responses:
+        "202":
+          description: Order accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Stock conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/orders/checkout:
+    post:
+      tags: [Orders]
+      summary: Create B2C checkout and payment
+      operationId: createCheckoutOrder
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutOrderRequest"
+      responses:
+        "201":
+          description: Checkout created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Stock conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          description: Robokassa sandbox initialization failed after local order creation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stock data, delivery configuration, or sandbox payment capability is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/orders/{public_id}:
+    get:
+      tags: [Orders]
+      summary: Get public order status by signed access token header
+      operationId: getPublicOrder
+      security:
+        - OrderAccessToken: []
+      parameters:
+        - name: public_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orders/{public_id}/payment-attempts:
+    post:
+      tags: [Orders, Payments]
+      summary: Create a new Robokassa payment attempt for an unpaid order
+      operationId: createOrderPaymentAttempt
+      security:
+        - OrderAccessToken: []
+      parameters:
+        - name: public_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentAttemptRequest"
+      responses:
+        "201":
+          description: A new payment attempt was created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "409":
+          description: Order is already paid, canceled, stale, or has an active attempt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/customer/auth/register:
+    post:
+      tags: [Customer Auth]
+      summary: Register customer account
+      operationId: registerCustomer
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerRegisterRequest"
+      responses:
+        "201":
+          description: Customer session created
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/customer/auth/login:
+    post:
+      tags: [Customer Auth]
+      summary: Customer login
+      operationId: loginCustomer
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerLoginRequest"
+      responses:
+        "200":
+          description: Customer session created
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/customer/auth/refresh:
+    post:
+      tags: [Customer Auth]
+      summary: Refresh customer session
+      operationId: refreshCustomerSession
+      security:
+        - CustomerRefreshSession: []
+          CsrfToken: []
+      responses:
+        "200":
+          description: Customer session refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/customer/auth/csrf:
+    get:
+      tags: [Customer Auth]
+      summary: Issue a session-bound customer CSRF token
+      operationId: issueCustomerCsrfToken
+      security:
+        - CustomerRefreshSession: []
+      responses:
+        "200":
+          description: CSRF token for subsequent unsafe customer requests
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/customer/auth/logout:
+    post:
+      tags: [Customer Auth]
+      summary: Logout current customer
+      operationId: logoutCustomer
+      security:
+        - CustomerRefreshSession: []
+          CsrfToken: []
+      responses:
+        "204":
+          description: Logged out
+
+  /api/v1/customer/auth/yandex/start:
+    get:
+      tags: [Customer Auth]
+      summary: Start Yandex ID OAuth login
+      operationId: startYandexLogin
+      security: []
+      parameters:
+        - name: return_to
+          in: query
+          schema:
+            type: string
+            description: Relative frontend URL to return to after login.
+      responses:
+        "302":
+          description: Redirect to Yandex OAuth authorize URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/v1/customer/auth/yandex/callback:
+    get:
+      tags: [Customer Auth]
+      summary: Complete Yandex ID OAuth login
+      operationId: completeYandexLogin
+      security: []
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+        - name: error_description
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect back to frontend with customer session cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+            Location:
+              schema:
+                type: string
+                format: uri-reference
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/customer/auth/yandex/link:
+    post:
+      tags: [Customer Auth]
+      summary: Link Yandex ID to current customer
+      operationId: linkYandexAccount
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      responses:
+        "302":
+          description: Redirect to Yandex OAuth authorize URL for account linking
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/customer/auth/yandex/unlink:
+    delete:
+      tags: [Customer Auth]
+      summary: Unlink Yandex ID from current customer
+      operationId: unlinkYandexAccount
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      responses:
+        "204":
+          description: Yandex ID unlinked
+        "400":
+          description: Cannot unlink the only login method
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/customer/auth/password-reset/request:
+    post:
+      tags: [Customer Auth]
+      summary: Password reset extension point, disabled in demo
+      operationId: requestCustomerPasswordReset
+      security: []
+      x-release-status: disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/FeatureDisabled"
+
+  /api/v1/customer/auth/password-reset/confirm:
+    post:
+      tags: [Customer Auth]
+      summary: Password reset confirmation extension point, disabled in demo
+      operationId: confirmCustomerPasswordReset
+      security: []
+      x-release-status: disabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetConfirmRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/FeatureDisabled"
+
+  /api/v1/account/me:
+    get:
+      tags: [Account]
+      summary: Get current customer account
+      operationId: getCustomerMe
+      security:
+        - CustomerSession: []
+      responses:
+        "200":
+          description: Customer account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Account]
+      summary: Update current customer profile
+      operationId: updateCustomerMe
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerProfileRequest"
+      responses:
+        "200":
+          description: Updated customer account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerSessionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/manager:
+    get:
+      tags: [Account]
+      summary: Get assigned personal manager
+      operationId: getCustomerManager
+      security:
+        - CustomerSession: []
+      responses:
+        "200":
+          description: Personal manager or default contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonalManager"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/orders:
+    get:
+      tags: [Account]
+      summary: List customer order history
+      operationId: listCustomerOrders
+      security:
+        - CustomerSession: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Customer order history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerOrderListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/orders/{public_id}:
+    get:
+      tags: [Account]
+      summary: Get customer order details
+      operationId: getCustomerOrder
+      security:
+        - CustomerSession: []
+      parameters:
+        - name: public_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Customer order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicOrder"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/account/cart:
+    get:
+      tags: [Cart]
+      summary: Get current customer cart
+      operationId: getCustomerCart
+      security:
+        - CustomerSession: []
+      responses:
+        "200":
+          description: Customer cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/cart/items:
+    put:
+      tags: [Cart]
+      summary: Add or replace a cart item
+      operationId: upsertCustomerCartItem
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CartIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertCartItemRequest"
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Cart version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/account/cart/items/{id}:
+    patch:
+      tags: [Cart]
+      summary: Update cart item quantity
+      operationId: updateCustomerCartItem
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+        - $ref: "#/components/parameters/CartIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCartItemRequest"
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cart version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Cart]
+      summary: Remove cart item
+      operationId: deleteCustomerCartItem
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+        - $ref: "#/components/parameters/CartIfMatch"
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cart version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/account/cart/merge:
+    post:
+      tags: [Cart]
+      summary: Merge anonymous frontend cart into customer cart
+      operationId: mergeCustomerCart
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CartIfMatch"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeCartRequest"
+      responses:
+        "200":
+          description: Merged cart
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Cart version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/account/favorites:
+    get:
+      tags: [Favorites]
+      summary: List customer favorite products
+      operationId: listCustomerFavorites
+      security:
+        - CustomerSession: []
+      responses:
+        "200":
+          description: Favorite products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoriteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Favorites]
+      summary: Add product to favorites
+      operationId: addCustomerFavorite
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddFavoriteRequest"
+      responses:
+        "201":
+          description: Favorite added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Favorite"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/favorites/{product_id}:
+    delete:
+      tags: [Favorites]
+      summary: Remove product from favorites
+      operationId: deleteCustomerFavorite
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Favorite removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/payments/robokassa/result:
+    post:
+      tags: [Payments]
+      summary: Receive and verify Robokassa ResultURL notification
+      operationId: handleRobokassaResult
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/RobokassaResultNotification"
+      responses:
+        "200":
+          description: Notification committed; body is `OK{InvId}`.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "400":
+          description: Invalid signature, amount, invoice id, or payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/payments/robokassa/success:
+    get:
+      tags: [Payments]
+      summary: Handle browser return after a nominally successful payment
+      operationId: handleRobokassaSuccessReturn
+      security: []
+      responses:
+        "302":
+          description: Redirect to the frontend order status page; does not confirm payment.
+
+  /api/v1/payments/robokassa/fail:
+    get:
+      tags: [Payments]
+      summary: Handle browser return after a canceled or failed payment
+      operationId: handleRobokassaFailReturn
+      security: []
+      responses:
+        "302":
+          description: Redirect to the frontend order status page; does not change payment state.
+
+  /api/v1/admin/auth/login:
+    post:
+      tags: [Admin Auth]
+      summary: Admin login
+      operationId: adminLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Session created
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/admin/auth/refresh:
+    post:
+      tags: [Admin Auth]
+      summary: Refresh admin session
+      operationId: refreshAdminSession
+      security:
+        - AdminRefreshSession: []
+          CsrfToken: []
+      responses:
+        "200":
+          description: Session refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/admin/auth/csrf:
+    get:
+      tags: [Admin Auth]
+      summary: Issue a session-bound staff CSRF token
+      operationId: issueAdminCsrfToken
+      security:
+        - AdminRefreshSession: []
+      responses:
+        "200":
+          description: CSRF token for subsequent unsafe staff requests
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/admin/auth/logout:
+    post:
+      tags: [Admin Auth]
+      summary: Logout current admin user
+      operationId: adminLogout
+      security:
+        - AdminRefreshSession: []
+          CsrfToken: []
+      responses:
+        "204":
+          description: Logged out
+
+  /api/v1/admin/auth/me:
+    get:
+      tags: [Admin Auth]
+      summary: Current admin user
+      operationId: getAdminMe
+      security:
+        - AdminSession: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/admin/orders:
+    get:
+      tags: [Admin]
+      summary: List orders for managers
+      operationId: adminListOrders
+      security:
+        - AdminSession: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: Admin order list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrderListResponse"
+
+  /api/v1/admin/orders/{id}:
+    get:
+      tags: [Admin]
+      summary: Get order details for managers
+      operationId: adminGetOrder
+      security:
+        - AdminSession: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Admin]
+      summary: Apply an allowed manual order transition
+      operationId: adminUpdateOrder
+      security:
+        - AdminSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminOrderRequest"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrder"
+        "409":
+          description: Invalid state transition or optimistic version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/customers:
+    get:
+      tags: [Admin]
+      summary: List customer accounts for managers
+      operationId: adminListCustomers
+      security:
+        - AdminSession: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 120
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: Customer account list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerListResponse"
+
+  /api/v1/admin/customers/{id}:
+    get:
+      tags: [Admin]
+      summary: Get customer account for managers
+      operationId: adminGetCustomer
+      security:
+        - AdminSession: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      responses:
+        "200":
+          description: Customer account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomer"
+
+  /api/v1/admin/leads:
+    get:
+      tags: [Admin]
+      summary: List locally stored contact and urgent requests
+      operationId: adminListLeads
+      security:
+        - AdminSession: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/AdminLeadStatus"
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [contact, product, weekend, delivery]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: Lead list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLeadListResponse"
+
+  /api/v1/admin/leads/{id}:
+    get:
+      tags: [Admin]
+      summary: Get a locally stored request
+      operationId: adminGetLead
+      security:
+        - AdminSession: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      responses:
+        "200":
+          description: Lead details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLead"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Admin]
+      summary: Change lead processing status
+      operationId: adminUpdateLead
+      security:
+        - AdminSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminLeadRequest"
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLead"
+        "409":
+          description: Optimistic version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/products/{id}:
+    patch:
+      tags: [Admin]
+      summary: Update product enrichment fields
+      operationId: adminUpdateProduct
+      security:
+        - AdminSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductRequest"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+
+  /api/v1/admin/integrations/sync-jobs:
+    get:
+      tags: [Admin, Integrations]
+      summary: List integration sync jobs
+      operationId: listSyncJobs
+      security:
+        - AdminSession: []
+      responses:
+        "200":
+          description: Sync jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SyncJob"
+
+  /api/v1/admin/integrations/moysklad/sync:
+    post:
+      tags: [Admin, Integrations]
+      summary: Trigger manual MойСклад sync
+      operationId: triggerMoySkladSync
+      security:
+        - AdminSession: []
+          CsrfToken: []
+      responses:
+        "202":
+          description: Sync queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/v1/articles:
+    get:
+      tags: [Articles]
+      summary: List published articles
+      operationId: listArticles
+      security: []
+      responses:
+        "200":
+          description: Published articles
+          content: {application/json: {schema: {type: object}}}
+
+  /api/v1/articles/{slug}:
+    get:
+      tags: [Articles]
+      summary: Get a published article
+      operationId: getArticle
+      security: []
+      parameters:
+        - {name: slug, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Published article
+          content: {application/json: {schema: {type: object}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+
+  /api/v1/admin/articles:
+    get:
+      tags: [Admin, Articles]
+      summary: List articles for content staff
+      operationId: adminListArticles
+      security: [{AdminSession: []}]
+      responses:
+        "200": {description: Articles, content: {application/json: {schema: {type: object}}}}
+    post:
+      tags: [Admin, Articles]
+      summary: Create article draft
+      operationId: adminCreateArticle
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "201": {description: Article created, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/articles/{id}:
+    get:
+      tags: [Admin, Articles]
+      summary: Get article for content staff
+      operationId: adminGetArticle
+      security: [{AdminSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Article, content: {application/json: {schema: {type: object}}}}
+    patch:
+      tags: [Admin, Articles]
+      summary: Update, publish, or archive article
+      operationId: adminUpdateArticle
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Updated article, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/media/upload-intents:
+    post:
+      tags: [Admin, Media]
+      summary: Create private S3 media upload intent
+      operationId: createMediaUploadIntent
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "201": {description: Upload intent, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/media/{id}:
+    get:
+      tags: [Admin, Media]
+      summary: Get media processing status
+      operationId: getAdminMedia
+      security: [{AdminSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Media asset, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/media/{id}/complete:
+    post:
+      tags: [Admin, Media]
+      summary: Queue uploaded media processing
+      operationId: completeMediaUpload
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202": {description: Media queued, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/articles/{id}/media:
+    post:
+      tags: [Admin, Articles, Media]
+      summary: Attach ready media to article
+      operationId: attachArticleMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Article with media, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/articles/{id}/media/{media_id}:
+    patch:
+      tags: [Admin, Articles, Media]
+      summary: Reorder or edit article media
+      operationId: updateArticleMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: media_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Article with media, content: {application/json: {schema: {type: object}}}}
+    delete:
+      tags: [Admin, Articles, Media]
+      summary: Detach article media
+      operationId: deleteArticleMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: media_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Article with media, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/products/{id}/media:
+    get:
+      tags: [Admin, Media]
+      summary: List product media
+      operationId: adminListProductMedia
+      security: [{AdminSession: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Product media, content: {application/json: {schema: {type: object}}}}
+    post:
+      tags: [Admin, Media]
+      summary: Attach ready media to product
+      operationId: attachProductMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Product media, content: {application/json: {schema: {type: object}}}}
+
+  /api/v1/admin/products/{id}/media/{media_id}:
+    patch:
+      tags: [Admin, Media]
+      summary: Reorder or edit product media
+      operationId: updateProductMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: media_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object}}}
+      responses:
+        "200": {description: Product media, content: {application/json: {schema: {type: object}}}}
+    delete:
+      tags: [Admin, Media]
+      summary: Detach product media
+      operationId: deleteProductMedia
+      security: [{AdminSession: [], CsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: media_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Product media, content: {application/json: {schema: {type: object}}}}
+
+components:
+  securitySchemes:
+    CustomerSession:
+      type: apiKey
+      in: cookie
+      name: kv_customer_access
+      description: Short-lived customer access session. HttpOnly, Secure, SameSite=Lax.
+    CustomerRefreshSession:
+      type: apiKey
+      in: cookie
+      name: kv_customer_refresh
+      description: Rotating customer refresh credential. Stored only as a hash server-side.
+    AdminSession:
+      type: apiKey
+      in: cookie
+      name: kv_access
+      description: Short-lived staff access session with server-side role and permission checks.
+    AdminRefreshSession:
+      type: apiKey
+      in: cookie
+      name: kv_refresh
+      description: Rotating staff refresh credential. Stored only as a hash server-side.
+    CsrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Signed session-bound CSRF token required together with cookie auth on unsafe methods.
+    OrderAccessToken:
+      type: apiKey
+      in: header
+      name: X-Order-Access-Token
+      description: Signed opaque guest-order credential. Returned once, stored only as a hash, and never put in URLs or logs.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Opaque client-generated key. Reuse with a different body returns 409.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    CategorySlug:
+      name: category
+      in: query
+      description: Globally unique category slug. Omit to query the whole catalog.
+      schema:
+        type: string
+        pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    IncludeDescendants:
+      name: include_descendants
+      in: query
+      description: When category is set, include products assigned to every published descendant. Ignored when category is omitted.
+      schema:
+        type: boolean
+        default: true
+    UuidPathId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CartIfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Current cart ETag, for example `"7"`.
+      schema:
+        type: string
+        pattern: '^"[0-9]+"$'
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    FeatureDisabled:
+      description: Capability is intentionally disabled in the demo release
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            ok: false
+            error:
+              code: FEATURE_DISABLED
+              message: This capability is not available in the demo release.
+              request_id: req_01J00000000000000000000000
+              retryable: false
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [ok, version]
+      properties:
+        ok:
+          type: boolean
+        version:
+          type: string
+
+    PublicSettings:
+      type: object
+      required: [fixed_delivery_price, stock_reservation_ttl_seconds, manager]
+      properties:
+        fixed_delivery_price:
+          $ref: "#/components/schemas/Money"
+        stock_reservation_ttl_seconds:
+          type: integer
+          const: 300
+        manager:
+          $ref: "#/components/schemas/PersonalManager"
+        emergency_phone:
+          type: [string, "null"]
+        emergency_surcharge_percent:
+          type: integer
+          default: 10
+
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    ErrorDetail:
+      type: object
+      required: [code, message, request_id, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+        retryable:
+          type: boolean
+        field_errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+        meta:
+          type: object
+          additionalProperties: true
+
+    FieldError:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+
+    AcceptedResponse:
+      type: object
+      required: [ok, id]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        id:
+          type: string
+          format: uuid
+
+    CsrfTokenResponse:
+      type: object
+      required: [csrf_token]
+      properties:
+        csrf_token:
+          type: string
+          minLength: 32
+          maxLength: 512
+          description: Keep in memory and send as X-CSRF-Token. Never put it in a URL or log.
+
+    CategoryTreeResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryTreeNode"
+
+    CategoryTreeNode:
+      type: object
+      required:
+        - id
+        - slug
+        - path
+        - title
+        - description
+        - depth
+        - is_leaf
+        - direct_product_count
+        - subtree_product_count
+        - children
+      properties:
+        id:
+          type: string
+          format: uuid
+        parent_id:
+          type: [string, "null"]
+          format: uuid
+        parent_slug:
+          type: [string, "null"]
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        path:
+          type: string
+          description: Canonical navigation path assembled from ancestor slugs; it changes when the node is moved.
+          example: plates/locking-plates
+        title:
+          type: string
+        description:
+          type: string
+        depth:
+          type: integer
+          minimum: 0
+        is_leaf:
+          type: boolean
+          description: True when the node has no published children.
+        direct_product_count:
+          type: integer
+          minimum: 0
+          description: Number of published products assigned directly to this category.
+        subtree_product_count:
+          type: integer
+          minimum: 0
+          description: Number of distinct published products in this category and its published descendants.
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryTreeNode"
+        seo:
+          $ref: "#/components/schemas/SeoMeta"
+
+    CategoryDetail:
+      allOf:
+        - $ref: "#/components/schemas/CategoryTreeNode"
+        - type: object
+          required: [ancestors]
+          properties:
+            ancestors:
+              type: array
+              description: Ordered from the root category to the direct parent.
+              items:
+                $ref: "#/components/schemas/CategoryBreadcrumb"
+
+    CategoryBreadcrumb:
+      type: object
+      required: [id, slug, path, title]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+
+    ProductListResponse:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductSummary"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    ProductSummary:
+      type: object
+      required: [id, slug, category_slug, category_path, name, article, price, stock]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        category_slug:
+          type: string
+        category_path:
+          type: string
+        name:
+          type: string
+        subtitle:
+          type: string
+        article:
+          type: string
+        price:
+          $ref: "#/components/schemas/Money"
+        image:
+          $ref: "#/components/schemas/ProductImage"
+        stock:
+          $ref: "#/components/schemas/Stock"
+        specs_preview:
+          type: array
+          items:
+            $ref: "#/components/schemas/Spec"
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/ProductSummary"
+        - type: object
+          required: [specs, images, related]
+          properties:
+            description:
+              type: string
+            specs:
+              type: array
+              items:
+                $ref: "#/components/schemas/Spec"
+            images:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductImage"
+            related:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductSummary"
+            seo:
+              $ref: "#/components/schemas/SeoMeta"
+
+    ProductImage:
+      type: object
+      required: [url, alt, variants]
+      properties:
+        url:
+          type: string
+          format: uri-reference
+          description: Versioned public fallback URL.
+        alt:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicImageVariant"
+
+    PublicImageVariant:
+      type: object
+      required: [kind, format, url, width, height]
+      properties:
+        kind:
+          type: string
+          enum: [thumb, card, detail, zoom]
+        format:
+          type: string
+          enum: [webp, avif, jpeg, png]
+        url:
+          type: string
+          format: uri-reference
+        width:
+          type: integer
+        height:
+          type: integer
+
+    Spec:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        unit:
+          type: string
+
+    Stock:
+      type: object
+      required: [quantity, state, label, synced_at, is_stale]
+      properties:
+        quantity:
+          type: integer
+          minimum: 0
+        state:
+          $ref: "#/components/schemas/StockState"
+        label:
+          type: string
+          examples: ["В наличии: 24 шт.", "Остаток: 3 шт. - закажите сейчас"]
+        expected_restock_at:
+          type: [string, "null"]
+          format: date
+        synced_at:
+          type: string
+          format: date-time
+        is_stale:
+          type: boolean
+
+    StockState:
+      type: string
+      enum: [available, low, out, unknown]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: integer
+          description: Amount in minor units, kopecks for RUB.
+        currency:
+          type: string
+          default: RUB
+
+    SeoMeta:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        canonical_url:
+          type: string
+          format: uri
+
+    SearchSuggestion:
+      type: object
+      required: [label, type, url]
+      properties:
+        label:
+          type: string
+        type:
+          type: string
+          enum: [product, category, article]
+        url:
+          type: string
+
+    CreateLeadRequest:
+      type: object
+      required: [name, phone, consent]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 30
+        email:
+          type: string
+          format: email
+        company:
+          type: string
+          maxLength: 160
+        message:
+          type: string
+          maxLength: 1500
+        product_slug:
+          type: string
+        source:
+          type: string
+          enum: [contact, product, weekend, delivery]
+          default: contact
+        consent:
+          type: boolean
+          const: true
+        website:
+          type: string
+          maxLength: 0
+          description: Honeypot field.
+
+    CreateStockSubscriptionRequest:
+      type: object
+      required: [product_slug, name, contact, consent]
+      properties:
+        product_slug:
+          type: string
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        contact:
+          type: string
+          minLength: 7
+          maxLength: 120
+          description: Phone or email.
+        consent:
+          type: boolean
+          const: true
+        website:
+          type: string
+          maxLength: 0
+
+    OrderItemInput:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+          description: Product is the sellable SKU. Size or fixation variants are separate related products.
+        quantity:
+          type: integer
+          minimum: 1
+
+    CreateQuoteOrderRequest:
+      type: object
+      required: [customer, legal_entity, items, consent]
+      properties:
+        customer:
+          $ref: "#/components/schemas/CustomerContactInput"
+        legal_entity:
+          $ref: "#/components/schemas/LegalEntityInput"
+        delivery:
+          $ref: "#/components/schemas/DeliveryInput"
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+        comment:
+          type: string
+          maxLength: 1500
+        consent:
+          type: boolean
+          const: true
+        website:
+          type: string
+          maxLength: 0
+
+    CreateCheckoutOrderRequest:
+      type: object
+      required: [customer, delivery, items, payment_method, consent]
+      properties:
+        customer:
+          $ref: "#/components/schemas/CustomerContactInput"
+        delivery:
+          $ref: "#/components/schemas/DeliveryInput"
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+        payment_method:
+          type: string
+          enum: [sbp, card]
+          default: sbp
+        comment:
+          type: string
+          maxLength: 1500
+        consent:
+          type: boolean
+          const: true
+        website:
+          type: string
+          maxLength: 0
+
+    CreatePaymentAttemptRequest:
+      type: object
+      required: [payment_method]
+      properties:
+        payment_method:
+          type: string
+          enum: [sbp, card]
+
+    CustomerContactInput:
+      type: object
+      required: [name, phone]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 30
+        email:
+          type: string
+          format: email
+
+    LegalEntityInput:
+      type: object
+      required: [company_name, inn, documents_email]
+      properties:
+        company_name:
+          type: string
+          minLength: 2
+          maxLength: 180
+        inn:
+          type: string
+          minLength: 10
+          maxLength: 12
+        kpp:
+          type: string
+          maxLength: 9
+        documents_email:
+          type: string
+          format: email
+
+    DeliveryInput:
+      type: object
+      required: [destination, city, address_line]
+      properties:
+        destination:
+          type: string
+          enum: [voronezh, intercity]
+        city:
+          type: string
+          minLength: 2
+          maxLength: 120
+        address_line:
+          type: string
+          minLength: 5
+          maxLength: 300
+          description: Provisional free-form address until courier/CDEK integration is designed.
+        postal_code:
+          type: [string, "null"]
+          maxLength: 20
+        comment:
+          type: [string, "null"]
+          maxLength: 500
+
+    OrderAcceptedResponse:
+      type: object
+      required: [ok, public_id, order_access_token, status]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        public_id:
+          type: string
+        order_access_token:
+          type: string
+          description: Returned once. Frontend stores it outside URLs and sends it as X-Order-Access-Token.
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+
+    CheckoutResponse:
+      allOf:
+        - $ref: "#/components/schemas/OrderAcceptedResponse"
+        - type: object
+          required: [payment, pricing, reservation_expires_at]
+          properties:
+            payment:
+              $ref: "#/components/schemas/PaymentConfirmation"
+            pricing:
+              $ref: "#/components/schemas/OrderPricing"
+            reservation_expires_at:
+              type: string
+              format: date-time
+              description: Server timestamp when the five-minute local stock reservation expires.
+
+    OrderPricing:
+      type: object
+      required: [subtotal, delivery, total]
+      properties:
+        subtotal:
+          $ref: "#/components/schemas/Money"
+        delivery:
+          $ref: "#/components/schemas/Money"
+        total:
+          $ref: "#/components/schemas/Money"
+      description: Delivery is a server-side fixed amount in the demo release.
+
+    PaymentConfirmation:
+      type: object
+      required: [provider, environment, status, confirmation_method, confirmation_url]
+      properties:
+        provider:
+          type: string
+          enum: [robokassa]
+        environment:
+          type: string
+          const: sandbox
+          description: Real Robokassa payments are blocked in the demo release.
+        status:
+          $ref: "#/components/schemas/PaymentStatus"
+        confirmation_method:
+          type: string
+          enum: [redirect_get, redirect_post]
+        confirmation_url:
+          type: string
+          format: uri
+        form_fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Signed Robokassa fields for redirect_post. Contains no provider secrets.
+
+    RobokassaResultNotification:
+      type: object
+      required: [OutSum, InvId, SignatureValue]
+      properties:
+        OutSum:
+          type: string
+          pattern: '^[0-9]+(\.[0-9]{1,2})?$'
+        InvId:
+          type: integer
+          minimum: 1
+        SignatureValue:
+          type: string
+          minLength: 32
+          maxLength: 128
+        PaymentMethod:
+          type: string
+        IncSum:
+          type: string
+        Shp_order:
+          type: string
+      additionalProperties: true
+
+    PublicOrder:
+      type: object
+      required: [public_id, status, payment_status, items, pricing]
+      properties:
+        public_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        payment_status:
+          $ref: "#/components/schemas/PaymentStatus"
+        delivery_tracking_number:
+          type: [string, "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductSummary"
+        pricing:
+          $ref: "#/components/schemas/OrderPricing"
+        manager:
+          $ref: "#/components/schemas/PersonalManager"
+
+    OrderStatus:
+      type: string
+      enum:
+        - new
+        - awaiting_stock_confirmation
+        - awaiting_payment
+        - paid
+        - assembling
+        - ready_for_dispatch
+        - shipped
+        - completed
+        - canceled
+
+    PaymentStatus:
+      type: string
+      enum: [not_required, created, pending, succeeded, canceled, expired, failed]
+
+    CustomerRegisterRequest:
+      type: object
+      required: [name, email, password, consent]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        phone:
+          type: [string, "null"]
+          minLength: 7
+          maxLength: 30
+          description: Optional contact field in demo; it is not a login identifier and is not verified.
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+        customer_type:
+          type: string
+          enum: [individual, legal_entity]
+          default: individual
+        company_name:
+          type: string
+          maxLength: 180
+        inn:
+          type: string
+          minLength: 10
+          maxLength: 12
+        consent:
+          type: boolean
+          const: true
+        website:
+          type: string
+          maxLength: 0
+
+    CustomerLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+
+    CustomerSessionResponse:
+      type: object
+      required: [customer]
+      properties:
+        customer:
+          $ref: "#/components/schemas/CustomerAccount"
+
+    CustomerAccount:
+      type: object
+      required: [id, name, email, customer_type, manager, auth_providers]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: [string, "null"]
+        email:
+          type: string
+          format: email
+        customer_type:
+          type: string
+          enum: [individual, legal_entity]
+        company_name:
+          type: [string, "null"]
+        inn:
+          type: [string, "null"]
+        documents_email:
+          type: [string, "null"]
+          format: email
+        is_email_verified:
+          type: boolean
+          default: false
+        is_phone_verified:
+          type: boolean
+          default: false
+        manager:
+          $ref: "#/components/schemas/PersonalManager"
+        auth_providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerAuthProvider"
+
+    CustomerAuthProvider:
+      type: object
+      required: [provider, status, linked_at]
+      properties:
+        provider:
+          type: string
+          enum: [password, yandex]
+        status:
+          type: string
+          enum: [active, disabled]
+          description: Password can be disabled by secure Yandex auto-link when local email was unverified.
+        display_name:
+          type: string
+        email:
+          type: [string, "null"]
+          format: email
+        linked_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: [string, "null"]
+          format: date-time
+
+    UpdateCustomerProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        phone:
+          type: string
+          minLength: 7
+          maxLength: 30
+        email:
+          type: string
+          format: email
+        customer_type:
+          type: string
+          enum: [individual, legal_entity]
+        company_name:
+          type: string
+          maxLength: 180
+        inn:
+          type: string
+          minLength: 10
+          maxLength: 12
+        documents_email:
+          type: string
+          format: email
+
+    PersonalManager:
+      type: object
+      required: [name, phone, email, scope]
+      properties:
+        id:
+          type: [string, "null"]
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        messenger_url:
+          type: [string, "null"]
+          format: uri
+        scope:
+          type: string
+          const: global
+          description: The same configured manager is returned for every customer in the demo release.
+
+    CustomerOrderListResponse:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicOrder"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    Cart:
+      type: object
+      required: [id, version, items, subtotal, delivery, total, has_conflicts, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartItem"
+        subtotal:
+          $ref: "#/components/schemas/Money"
+        delivery:
+          $ref: "#/components/schemas/Money"
+        total:
+          $ref: "#/components/schemas/Money"
+        has_conflicts:
+          type: boolean
+          description: true when item quantity exceeds stock or product became unavailable.
+        updated_at:
+          type: string
+          format: date-time
+
+    CartItem:
+      type: object
+      required: [id, product, quantity, unit_price, line_total, stock]
+      properties:
+        id:
+          type: string
+          format: uuid
+        product:
+          $ref: "#/components/schemas/ProductSummary"
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price:
+          $ref: "#/components/schemas/Money"
+        line_total:
+          $ref: "#/components/schemas/Money"
+        stock:
+          $ref: "#/components/schemas/Stock"
+        conflict:
+          type: [string, "null"]
+          enum: [out_of_stock, quantity_exceeds_stock, price_changed, null]
+
+    UpsertCartItemRequest:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 999
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 999
+
+    MergeCartRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+
+    FavoriteListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Favorite"
+
+    Favorite:
+      type: object
+      required: [id, product, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        product:
+          $ref: "#/components/schemas/ProductSummary"
+        created_at:
+          type: string
+          format: date-time
+
+    AddFavoriteRequest:
+      type: object
+      required: [product_id]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+
+    AuthUserResponse:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+
+    AuthUser:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, manager, content, readonly]
+
+    AdminOrderListResponse:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminOrder"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    AdminCustomerListResponse:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomer"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    AdminCustomer:
+      allOf:
+        - $ref: "#/components/schemas/CustomerAccount"
+        - type: object
+          required: [created_at, orders_count, total_spent]
+          properties:
+            created_at:
+              type: string
+              format: date-time
+            orders_count:
+              type: integer
+              minimum: 0
+            total_spent:
+              $ref: "#/components/schemas/Money"
+
+    AdminOrder:
+      type: object
+      required: [id, public_id, status, payment_status, created_at, items]
+      properties:
+        id:
+          type: string
+          format: uuid
+        public_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        payment_status:
+          $ref: "#/components/schemas/PaymentStatus"
+        customer_type:
+          type: string
+          enum: [individual, legal_entity]
+        customer_name:
+          type: string
+        customer_phone_masked:
+          type: string
+        customer_email_masked:
+          type: string
+        total:
+          $ref: "#/components/schemas/Money"
+        created_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderLine"
+
+    UpdateAdminOrderRequest:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [assembling, ready_for_dispatch, shipped, completed, canceled]
+        delivery_tracking_number:
+          type: [string, "null"]
+          maxLength: 120
+        reason:
+          type: [string, "null"]
+          maxLength: 500
+        version:
+          type: integer
+          minimum: 0
+
+    AdminLeadStatus:
+      type: string
+      enum: [new, in_progress, resolved, spam]
+
+    AdminLeadListResponse:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminLead"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+
+    AdminLead:
+      type: object
+      required: [id, name, phone, source, status, consent_version, version, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: [string, "null"]
+          format: email
+        company:
+          type: [string, "null"]
+        message:
+          type: [string, "null"]
+        product_id:
+          type: [string, "null"]
+          format: uuid
+        source:
+          type: string
+          enum: [contact, product, weekend, delivery]
+        status:
+          $ref: "#/components/schemas/AdminLeadStatus"
+        consent_version:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateAdminLeadRequest:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          $ref: "#/components/schemas/AdminLeadStatus"
+        version:
+          type: integer
+          minimum: 0
+
+    OrderLine:
+      type: object
+      required: [product_name, article, quantity, unit_price]
+      properties:
+        product_name:
+          type: string
+        article:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          $ref: "#/components/schemas/Money"
+
+    UpdateProductRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        subtitle:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        seo:
+          $ref: "#/components/schemas/SeoMeta"
+
+    SyncJob:
+      type: object
+      required: [id, provider, kind, status, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [moysklad, robokassa, robocheki, email, notifications, s3, yandex]
+        kind:
+          type: string
+          enum: [stock, catalog, order, invoice, payment, fiscal, email, notification, media, oauth]
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+        processed_count:
+          type: integer
+          default: 0
+        error:
+          type: [string, "null"]

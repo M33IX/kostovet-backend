@@ -1,0 +1,33 @@
+{
+    servers {
+        trusted_proxies static private_ranges
+        client_ip_headers X-Forwarded-For X-Real-IP
+    }
+}
+
+{$API_HOST} {
+    @admin_denied {
+        path /api/v1/admin/*
+        not client_ip {$ADMIN_ALLOWED_CIDRS}
+    }
+    respond @admin_denied "Forbidden" 403
+    reverse_proxy {$API_UPSTREAM} {
+        header_up -X-Forwarded-For
+        header_up -X-Forwarded-Host
+        header_up -X-Forwarded-Proto
+        header_up X-Forwarded-For {client_ip}
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+
+{$FRONTEND_HOST} {
+    reverse_proxy {$FRONTEND_UPSTREAM} {
+        header_up -X-Forwarded-For
+        header_up -X-Forwarded-Host
+        header_up -X-Forwarded-Proto
+        header_up X-Forwarded-For {client_ip}
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

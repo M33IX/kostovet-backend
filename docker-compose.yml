@@ -1,0 +1,109 @@
+name: kosto-vet-demo
+
+x-backend: &backend
+  build: .
+  env_file: ${BACKEND_ENV_FILE:-.env}
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks: [edge, backend]
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      FRONTEND_HOST: ${FRONTEND_HOST:-localhost}
+      API_HOST: ${API_HOST:-api.localhost}
+      FRONTEND_UPSTREAM: ${FRONTEND_UPSTREAM:-frontend:3000}
+      API_UPSTREAM: api:8000
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:-127.0.0.1/32 ::1/128}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, frontend]
+    networks: [edge]
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-nginx:1.29-alpine}
+    restart: unless-stopped
+    networks: [edge]
+
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["uv", "run", "--frozen", "--no-sync", "alembic", "upgrade", "head"]
+
+  api:
+    <<: *backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose: ["8000"]
+
+  worker:
+    <<: *backend
+    command: ["uv", "run", "--frozen", "--no-sync", "python", "-m", "kosto_vet.bootstrap.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *backend
+    command: ["uv", "run", "--frozen", "--no-sync", "python", "-m", "kosto_vet.bootstrap.scheduler"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  seed:
+    <<: *backend
+    profiles: [tools]
+    restart: "no"
+    command: ["uv", "run", "--frozen", "--no-sync", "kosto-vet", "seed-demo"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kosto_vet}
+      POSTGRES_USER: ${POSTGRES_USER:-kosto_vet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kosto_vet}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+
+  redis:
+    image: redis:8.2-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks: [backend]
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  backend:
+    internal: true

@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedOrigins": ["https://admin.example.com"],
+    "AllowedMethods": ["POST"],
+    "AllowedHeaders": ["Content-Type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 600
+  }
+]

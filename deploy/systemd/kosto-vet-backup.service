@@ -1,0 +1,12 @@
+[Unit]
+Description=Kosto-Vet PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/kosto-vet
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile backup run --rm backup
+User=kosto-vet
+Group=kosto-vet
+
