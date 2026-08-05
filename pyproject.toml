@@ -16,6 +16,7 @@ dependencies = [
   "prometheus-client>=0.22.0",
   "pillow>=11.3.0",
   "pydantic-settings>=2.10.0",
+  "pyvips>=3.0.0",
   "pyjwt>=2.10.0",
   "python-multipart>=0.0.20",
   "pyyaml>=6.0.2",
@@ -77,7 +78,7 @@ plugins = ["pydantic.mypy"]
 packages = ["kosto_vet"]
 
 [[tool.mypy.overrides]]
-module = ["boto3", "boto3.*", "yaml", "yaml.*"]
+module = ["boto3", "boto3.*", "pyvips", "pyvips.*", "yaml", "yaml.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]

@@ -8,6 +8,9 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_CACHE_DIR=/tmp/uv-cache \
     UV_NO_CACHE=1
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libvips42 \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /app app
 WORKDIR /app
 COPY --from=uv /uv /usr/local/bin/uv

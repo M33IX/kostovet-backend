@@ -1,0 +1,30 @@
+{
+  "warehouse": {
+    "external_id": "reviewed-moysklad-warehouse-uuid",
+    "name": "Основной склад"
+  },
+  "categories": [
+    {
+      "slug": "plates",
+      "title": "Пластины",
+      "description": "Имплантаты для остеосинтеза",
+      "active": true,
+      "published": false
+    }
+  ],
+  "products": [
+    {
+      "external_id": "reviewed-moysklad-product-uuid",
+      "category": "plates",
+      "article": "KV-PL-001",
+      "slug": "plate-example",
+      "name": "Пластина — пример для проверки",
+      "subtitle": "Короткое описание",
+      "description": "Описание в Markdown или plain text.",
+      "price_minor": 114300,
+      "stock_quantity": 12,
+      "active": true,
+      "published": false
+    }
+  ]
+}

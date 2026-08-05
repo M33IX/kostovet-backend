@@ -71,17 +71,23 @@ async def run_once(database: Database) -> None:
                     )
                 )
         if settings.moysklad_mode is not Mode.DISABLED:
-            active = await session.scalar(
-                select(IntegrationJob.id).where(
-                    IntegrationJob.provider == "moysklad",
-                    IntegrationJob.kind == "stock",
-                    IntegrationJob.status.in_(["queued", "running"]),
-                )
+            schedules = (
+                ("catalog", settings.moysklad_catalog_sync_interval_seconds),
+                ("stock", settings.moysklad_stock_sync_interval_seconds),
             )
-            if not active:
-                session.add(
-                    IntegrationJob(provider="moysklad", kind="stock", status="queued", progress={})
+            for kind, interval_seconds in schedules:
+                recent = await session.scalar(
+                    select(IntegrationJob.id).where(
+                        IntegrationJob.provider == "moysklad",
+                        IntegrationJob.kind == kind,
+                        IntegrationJob.created_at
+                        >= utc_now() - timedelta(seconds=interval_seconds),
+                    )
                 )
+                if not recent:
+                    session.add(
+                        IntegrationJob(provider="moysklad", kind=kind, status="queued", progress={})
+                    )
         await session.commit()
 
 

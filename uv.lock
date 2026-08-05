@@ -719,6 +719,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-multipart" },
+    { name = "pyvips" },
     { name = "pyyaml" },
     { name = "sqlalchemy" },
     { name = "structlog" },
@@ -756,6 +757,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.10.0" },
     { name = "pyjwt", specifier = ">=2.10.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "pyvips", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "structlog", specifier = ">=25.4.0" },
@@ -1342,6 +1344,15 @@ sdist = { url = "https://files.pythonhosted.org/packages/5b/42/55c32bb9b12693c09
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl", hash = "sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23", size = 30042, upload-time = "2026-06-04T16:18:57.319Z" },
 ]
+
+[[package]]
+name = "pyvips"
+version = "3.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2d/6a/282936de9faac6addf6bc8792c18e006489d0023ffd8856b8643f54d0558/pyvips-3.1.1.tar.gz", hash = "sha256:84fe744d023b1084ac2516bb17064cacd41c7f8aabf8e524dd383534941b9301", size = 56951, upload-time = "2025-12-09T18:38:06.355Z" }
 
 [[package]]
 name = "pywin32"

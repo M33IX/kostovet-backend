@@ -9,6 +9,7 @@ from time import perf_counter
 from uuid import UUID
 
 import boto3
+import pyvips
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import delete, or_, select
 
@@ -173,45 +174,43 @@ async def _process_media(database: Database, job: IntegrationJob) -> dict[str, o
                 or ALLOWED_FORMATS[source_format] != asset.mime_type
             ):
                 raise ValueError("image signature or mime type is not allowed")
-            with Image.open(BytesIO(source)) as decoded:
-                decoded.load()
-                if decoded.width * decoded.height > MAX_PIXELS:
-                    raise ValueError("image exceeds pixel limit")
-                normalized = decoded.convert("RGBA" if "A" in decoded.getbands() else "RGB")
-                asset.width, asset.height = normalized.size
-                asset.checksum = hashlib.sha256(source).hexdigest()
-                await session.execute(delete(MediaVariant).where(MediaVariant.asset_id == asset.id))
-                for kind, edge in VARIANT_EDGES.items():
-                    variant = normalized.copy()
-                    variant.thumbnail((edge, edge))
-                    encoded = BytesIO()
-                    variant.save(encoded, format="WEBP", quality=86, method=6)
-                    body = encoded.getvalue()
-                    checksum = hashlib.sha256(body).hexdigest()
-                    key = f"media/{asset.id}/{checksum}/{kind}.webp"
-                    client.put_object(
-                        Bucket=settings.s3_public_media_bucket,
-                        Key=key,
-                        Body=body,
-                        ContentType="image/webp",
-                        CacheControl="public, max-age=31536000, immutable",
+            decoded = pyvips.Image.new_from_buffer(
+                source, "", access="sequential", fail_on="warning"
+            )
+            normalized = decoded.autorot()
+            if normalized.width * normalized.height > MAX_PIXELS:
+                raise ValueError("image exceeds pixel limit")
+            asset.width, asset.height = normalized.width, normalized.height
+            asset.checksum = hashlib.sha256(source).hexdigest()
+            await session.execute(delete(MediaVariant).where(MediaVariant.asset_id == asset.id))
+            for kind, edge in VARIANT_EDGES.items():
+                variant = normalized.thumbnail_image(edge, height=edge, size="down")
+                body = variant.write_to_buffer(".webp[Q=86,strip]")
+                checksum = hashlib.sha256(body).hexdigest()
+                key = f"media/{asset.id}/{checksum}/{kind}.webp"
+                client.put_object(
+                    Bucket=settings.s3_public_media_bucket,
+                    Key=key,
+                    Body=body,
+                    ContentType="image/webp",
+                    CacheControl="public, max-age=31536000, immutable",
+                )
+                base = settings.s3_public_base_url or (
+                    f"{settings.s3_endpoint_url.rstrip('/')}/{settings.s3_public_media_bucket}"
+                )
+                session.add(
+                    MediaVariant(
+                        asset_id=asset.id,
+                        kind=kind,
+                        format="webp",
+                        public_url=f"{base.rstrip('/')}/{key}",
+                        public_object_key=key,
+                        width=variant.width,
+                        height=variant.height,
+                        size_bytes=len(body),
+                        checksum=checksum,
                     )
-                    base = settings.s3_public_base_url or (
-                        f"{settings.s3_endpoint_url.rstrip('/')}/{settings.s3_public_media_bucket}"
-                    )
-                    session.add(
-                        MediaVariant(
-                            asset_id=asset.id,
-                            kind=kind,
-                            format="webp",
-                            public_url=f"{base.rstrip('/')}/{key}",
-                            public_object_key=key,
-                            width=variant.width,
-                            height=variant.height,
-                            size_bytes=len(body),
-                            checksum=checksum,
-                        )
-                    )
+                )
             asset.status = "ready"
             asset.error_code = None
             await session.commit()

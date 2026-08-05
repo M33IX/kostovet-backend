@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     moysklad_access_token: SecretStr | None = None
     moysklad_warehouse_id: str | None = None
     moysklad_price_type_id: str | None = None
+    moysklad_catalog_sync_interval_seconds: int = Field(default=900, ge=60)
+    moysklad_stock_sync_interval_seconds: int = Field(default=60, ge=60)
 
     robokassa_mode: Mode = Mode.DISABLED
     fiscalization_mode: Mode = Mode.DISABLED
@@ -119,6 +121,12 @@ class Settings(BaseSettings):
     def production_guards(self) -> Settings:
         if self.robokassa_mode is Mode.PRODUCTION:
             raise ValueError("production Robokassa is blocked in the demo release")
+        if self.moysklad_mode is not Mode.DISABLED and (
+            not self.moysklad_access_token
+            or not self.moysklad_warehouse_id
+            or not self.moysklad_price_type_id
+        ):
+            raise ValueError("enabled MoySklad requires token, warehouse and price type")
         if self.app_env == "production":
             secrets = {
                 self.customer_session_secret.get_secret_value(),
@@ -133,6 +141,26 @@ class Settings(BaseSettings):
                 raise ValueError("production cookies and public API require HTTPS")
             if any(origin.startswith("http://") for origin in self.frontend_origins):
                 raise ValueError("production frontend origins require HTTPS")
+            if any(origin.startswith("http://") for origin in self.admin_origins):
+                raise ValueError("production admin origins require HTTPS")
+            if self.fixed_delivery_price_minor is None:
+                raise ValueError("production requires configured delivery price")
+            s3_values = (
+                self.s3_access_key_id,
+                self.s3_secret_access_key,
+                self.s3_originals_bucket,
+                self.s3_public_media_bucket,
+                self.s3_public_base_url,
+            )
+            if any(value is not None for value in s3_values) and not all(s3_values):
+                raise ValueError("production S3 configuration must be complete")
+            if all(s3_values) and not self.admin_origins:
+                raise ValueError("production S3 media requires an exact admin origin")
+            if (
+                self.moysklad_mode is not Mode.DISABLED
+                and not self.moysklad_api_base_url.startswith("https://")
+            ):
+                raise ValueError("production MoySklad API requires HTTPS")
         return self
 
 
