@@ -21,6 +21,7 @@ def test_demo_schema_contains_expected_operational_tables_only() -> None:
         "media_variants",
         "product_media",
         "article_media",
+        "customer_delivery_addresses",
     } <= tables
 
 

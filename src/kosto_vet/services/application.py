@@ -43,6 +43,7 @@ from kosto_vet.infrastructure.models import (
     CustomerAccount,
     CustomerConsent,
     CustomerCredential,
+    CustomerDeliveryAddress,
     CustomerOAuthAccount,
     CustomerSession,
     Favorite,
@@ -1195,6 +1196,155 @@ class ApplicationService:
         customer.version += 1
         await session.commit()
         return {"customer": await self._customer_payload(session, customer)}
+
+    @staticmethod
+    def delivery_address_payload(address: CustomerDeliveryAddress) -> dict[str, Any]:
+        return {
+            "id": str(address.id),
+            "label": address.label,
+            "destination": address.destination,
+            "city": address.city,
+            "address_line": address.address_line,
+            "postal_code": address.postal_code,
+            "comment": address.comment,
+            "is_default": address.is_default,
+            "version": address.version,
+            "created_at": address.created_at.isoformat(),
+            "updated_at": address.updated_at.isoformat(),
+        }
+
+    async def list_delivery_addresses(
+        self, session: AsyncSession, customer_id: UUID
+    ) -> dict[str, Any]:
+        addresses = (
+            await session.scalars(
+                select(CustomerDeliveryAddress)
+                .where(CustomerDeliveryAddress.customer_id == customer_id)
+                .order_by(
+                    CustomerDeliveryAddress.is_default.desc(),
+                    CustomerDeliveryAddress.updated_at.desc(),
+                )
+            )
+        ).all()
+        return {"items": [self.delivery_address_payload(address) for address in addresses]}
+
+    async def create_delivery_address(
+        self, session: AsyncSession, customer_id: UUID, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        customer = await session.get(CustomerAccount, customer_id, with_for_update=True)
+        if not customer:
+            raise not_found()
+        requested_default = bool(payload.pop("is_default", False))
+        current_default = await session.scalar(
+            select(CustomerDeliveryAddress.id).where(
+                CustomerDeliveryAddress.customer_id == customer_id,
+                CustomerDeliveryAddress.is_default.is_(True),
+            )
+        )
+        is_default = requested_default or current_default is None
+        if is_default:
+            await session.execute(
+                update(CustomerDeliveryAddress)
+                .where(CustomerDeliveryAddress.customer_id == customer_id)
+                .values(is_default=False)
+            )
+        address = CustomerDeliveryAddress(
+            customer_id=customer_id,
+            is_default=is_default,
+            **payload,
+        )
+        session.add(address)
+        await session.flush()
+        await session.commit()
+        return self.delivery_address_payload(address)
+
+    async def update_delivery_address(
+        self,
+        session: AsyncSession,
+        customer_id: UUID,
+        address_id: UUID,
+        payload: dict[str, Any],
+        expected_version: int,
+    ) -> dict[str, Any]:
+        customer = await session.get(CustomerAccount, customer_id, with_for_update=True)
+        if not customer:
+            raise not_found()
+        address = await session.scalar(
+            select(CustomerDeliveryAddress)
+            .where(
+                CustomerDeliveryAddress.id == address_id,
+                CustomerDeliveryAddress.customer_id == customer_id,
+            )
+            .with_for_update()
+        )
+        if not address:
+            raise not_found()
+        if address.version != expected_version:
+            raise DomainError("VERSION_CONFLICT", "Адрес был изменён.", 409)
+        if not payload:
+            raise DomainError("INVALID_REQUEST", "Не переданы поля для изменения.", 400)
+        requested_default = payload.pop("is_default", None)
+        if requested_default is True:
+            await session.execute(
+                update(CustomerDeliveryAddress)
+                .where(
+                    CustomerDeliveryAddress.customer_id == customer_id,
+                    CustomerDeliveryAddress.id != address.id,
+                )
+                .values(is_default=False)
+            )
+            address.is_default = True
+        elif requested_default is False and address.is_default:
+            raise DomainError(
+                "DEFAULT_ADDRESS_REQUIRED", "Сначала выберите другой адрес по умолчанию.", 409
+            )
+        required_fields = {"label", "destination", "city", "address_line"}
+        if any(payload.get(field) is None for field in required_fields & payload.keys()):
+            raise DomainError(
+                "INVALID_REQUEST", "Обязательные поля адреса не могут быть пустыми.", 400
+            )
+        for field, value in payload.items():
+            setattr(address, field, value)
+        address.version += 1
+        await session.commit()
+        return self.delivery_address_payload(address)
+
+    async def delete_delivery_address(
+        self, session: AsyncSession, customer_id: UUID, address_id: UUID, expected_version: int
+    ) -> None:
+        customer = await session.get(CustomerAccount, customer_id, with_for_update=True)
+        if not customer:
+            raise not_found()
+        address = await session.scalar(
+            select(CustomerDeliveryAddress)
+            .where(
+                CustomerDeliveryAddress.id == address_id,
+                CustomerDeliveryAddress.customer_id == customer_id,
+            )
+            .with_for_update()
+        )
+        if not address:
+            raise not_found()
+        if address.version != expected_version:
+            raise DomainError("VERSION_CONFLICT", "Адрес был изменён.", 409)
+        if address.is_default:
+            address.is_default = False
+            await session.flush()
+            replacement = await session.scalar(
+                select(CustomerDeliveryAddress)
+                .where(
+                    CustomerDeliveryAddress.customer_id == customer_id,
+                    CustomerDeliveryAddress.id != address.id,
+                )
+                .order_by(CustomerDeliveryAddress.updated_at.desc())
+                .with_for_update()
+                .limit(1)
+            )
+            if replacement:
+                replacement.is_default = True
+                replacement.version += 1
+        await session.delete(address)
+        await session.commit()
 
     async def _cart(
         self, session: AsyncSession, customer_id: UUID, *, create: bool = True

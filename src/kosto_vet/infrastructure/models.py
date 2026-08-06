@@ -153,6 +153,32 @@ class CustomerConsent(Base, UUIDTimestampMixin):
     request_id: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class CustomerDeliveryAddress(Base, UUIDTimestampMixin, VersionMixin):
+    __tablename__ = "customer_delivery_addresses"
+    customer_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("customer_accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    label: Mapped[str] = mapped_column(Text, nullable=False, default="Основной")
+    destination: Mapped[str] = mapped_column(Text, nullable=False)
+    city: Mapped[str] = mapped_column(Text, nullable=False)
+    address_line: Mapped[str] = mapped_column(Text, nullable=False)
+    postal_code: Mapped[str | None] = mapped_column(Text)
+    comment: Mapped[str | None] = mapped_column(Text)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    __table_args__ = (
+        CheckConstraint("destination in ('voronezh','intercity')"),
+        Index("ix_customer_delivery_addresses_customer", "customer_id", "is_default", "updated_at"),
+        Index(
+            "uq_customer_delivery_addresses_default",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+        ),
+    )
+
+
 class StaffUser(Base, UUIDTimestampMixin):
     __tablename__ = "staff_users"
     email: Mapped[str] = mapped_column(Text, nullable=False)

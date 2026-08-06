@@ -728,6 +728,117 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/account/delivery-addresses:
+    get:
+      tags: [Account]
+      summary: List saved delivery addresses of the current customer
+      operationId: listCustomerDeliveryAddresses
+      security:
+        - CustomerSession: []
+      responses:
+        "200":
+          description: Saved customer delivery addresses, default address first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryAddressListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Account]
+      summary: Save a delivery address for the current customer
+      operationId: createCustomerDeliveryAddress
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeliveryAddressRequest"
+      responses:
+        "201":
+          description: Saved delivery address
+          headers:
+            ETag:
+              schema:
+                type: string
+                pattern: '^"[0-9]+"$'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryAddress"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/account/delivery-addresses/{id}:
+    patch:
+      tags: [Account]
+      summary: Update a saved delivery address
+      operationId: updateCustomerDeliveryAddress
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+        - $ref: "#/components/parameters/VersionIfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeliveryAddressRequest"
+      responses:
+        "200":
+          description: Updated delivery address
+          headers:
+            ETag:
+              schema:
+                type: string
+                pattern: '^"[0-9]+"$'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryAddress"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Address version conflict or no replacement default address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Account]
+      summary: Delete a saved delivery address
+      operationId: deleteCustomerDeliveryAddress
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPathId"
+        - $ref: "#/components/parameters/VersionIfMatch"
+      responses:
+        "204":
+          description: Delivery address deleted; another address becomes default when available
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Address version conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/account/orders:
     get:
       tags: [Account]
@@ -1685,6 +1796,14 @@ components:
       schema:
         type: string
         pattern: '^"[0-9]+"$'
+    VersionIfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Current resource ETag, for example `"7"`.
+      schema:
+        type: string
+        pattern: '^"[0-9]+"$'
 
   responses:
     NotFound:
@@ -2555,6 +2674,105 @@ components:
         documents_email:
           type: string
           format: email
+
+    DeliveryAddress:
+      type: object
+      required: [id, label, destination, city, address_line, is_default, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        destination:
+          type: string
+          enum: [voronezh, intercity]
+        city:
+          type: string
+        address_line:
+          type: string
+        postal_code:
+          type: [string, "null"]
+        comment:
+          type: [string, "null"]
+        is_default:
+          type: boolean
+        version:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DeliveryAddressListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeliveryAddress"
+
+    CreateDeliveryAddressRequest:
+      type: object
+      required: [destination, city, address_line]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+          default: Основной
+        destination:
+          type: string
+          enum: [voronezh, intercity]
+        city:
+          type: string
+          minLength: 2
+          maxLength: 120
+        address_line:
+          type: string
+          minLength: 5
+          maxLength: 300
+        postal_code:
+          type: [string, "null"]
+          maxLength: 20
+        comment:
+          type: [string, "null"]
+          maxLength: 500
+        is_default:
+          type: boolean
+          default: false
+
+    UpdateDeliveryAddressRequest:
+      type: object
+      minProperties: 1
+      properties:
+        label:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 80
+        destination:
+          type: [string, "null"]
+          enum: [voronezh, intercity]
+        city:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 120
+        address_line:
+          type: [string, "null"]
+          minLength: 5
+          maxLength: 300
+        postal_code:
+          type: [string, "null"]
+          maxLength: 20
+        comment:
+          type: [string, "null"]
+          maxLength: 500
+        is_default:
+          type: [boolean, "null"]
 
     PersonalManager:
       type: object

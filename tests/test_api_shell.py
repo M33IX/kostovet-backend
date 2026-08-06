@@ -23,7 +23,7 @@ def test_liveness_and_golden_openapi_are_served() -> None:
                     if method in {"get", "post", "put", "patch", "delete"}
                 ]
             )
-            == 73
+            == 77
         )
 
 

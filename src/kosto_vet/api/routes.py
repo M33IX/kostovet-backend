@@ -28,6 +28,8 @@ from kosto_vet.api.schemas import (
     CheckoutCreate,
     CustomerRegister,
     CustomerUpdate,
+    DeliveryAddressCreate,
+    DeliveryAddressUpdate,
     FavoriteCreate,
     LeadCreate,
     Login,
@@ -597,6 +599,68 @@ async def customer_update(
     return await app.update_customer(
         session, principal.id, payload.model_dump(mode="json", exclude_unset=True)
     )
+
+
+@router.get("/api/v1/account/delivery-addresses", operation_id="listCustomerDeliveryAddresses")
+async def list_delivery_addresses(
+    session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(customer_principal),
+    app: ApplicationService = Depends(service),
+) -> dict[str, Any]:
+    return await app.list_delivery_addresses(session, principal.id)
+
+
+@router.post(
+    "/api/v1/account/delivery-addresses",
+    status_code=201,
+    operation_id="createCustomerDeliveryAddress",
+)
+async def create_delivery_address(
+    payload: DeliveryAddressCreate,
+    session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(customer_mutation),
+    app: ApplicationService = Depends(service),
+) -> Response:
+    result = await app.create_delivery_address(
+        session, principal.id, payload.model_dump(mode="python")
+    )
+    return JSONResponse(result, status_code=201, headers={"ETag": f'"{result["version"]}"'})
+
+
+@router.patch(
+    "/api/v1/account/delivery-addresses/{id}", operation_id="updateCustomerDeliveryAddress"
+)
+async def update_delivery_address(
+    id: UUID,
+    payload: DeliveryAddressUpdate,
+    if_match: Annotated[str, Header(alias="If-Match")],
+    session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(customer_mutation),
+    app: ApplicationService = Depends(service),
+) -> Response:
+    result = await app.update_delivery_address(
+        session,
+        principal.id,
+        id,
+        payload.model_dump(mode="python", exclude_unset=True),
+        _etag_version(if_match),
+    )
+    return JSONResponse(result, headers={"ETag": f'"{result["version"]}"'})
+
+
+@router.delete(
+    "/api/v1/account/delivery-addresses/{id}",
+    status_code=204,
+    operation_id="deleteCustomerDeliveryAddress",
+)
+async def delete_delivery_address(
+    id: UUID,
+    if_match: Annotated[str, Header(alias="If-Match")],
+    session: AsyncSession = Depends(get_session),
+    principal: Principal = Depends(customer_mutation),
+    app: ApplicationService = Depends(service),
+) -> None:
+    await app.delete_delivery_address(session, principal.id, id, _etag_version(if_match))
 
 
 @router.get("/api/v1/account/manager", operation_id="getCustomerManager")

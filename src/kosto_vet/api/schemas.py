@@ -108,6 +108,26 @@ class CustomerUpdate(StrictModel):
     version: int | None = Field(default=None, ge=0)
 
 
+class DeliveryAddressCreate(StrictModel):
+    label: str = Field(default="Основной", min_length=1, max_length=80)
+    destination: Literal["voronezh", "intercity"]
+    city: str = Field(min_length=2, max_length=120)
+    address_line: str = Field(min_length=5, max_length=300)
+    postal_code: str | None = Field(default=None, max_length=20)
+    comment: str | None = Field(default=None, max_length=500)
+    is_default: bool = False
+
+
+class DeliveryAddressUpdate(StrictModel):
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    destination: Literal["voronezh", "intercity"] | None = None
+    city: str | None = Field(default=None, min_length=2, max_length=120)
+    address_line: str | None = Field(default=None, min_length=5, max_length=300)
+    postal_code: str | None = Field(default=None, max_length=20)
+    comment: str | None = Field(default=None, max_length=500)
+    is_default: bool | None = None
+
+
 class CartItemUpsert(StrictModel):
     product_id: UUID
     quantity: int = Field(ge=1, le=999)

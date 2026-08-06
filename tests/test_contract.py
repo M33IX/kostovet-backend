@@ -13,7 +13,7 @@ from kosto_vet.bootstrap.api import app
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "openapi.v1.yaml"
-EXPECTED_SHA256 = "3daea04447ffb6619d070d11bab081422ccb493bea88fa05b2e2783acaf5c0fe"
+EXPECTED_SHA256 = "131d150d931055ec3288b06fa6987d9ebde3b0e3a06d8624cd5ad011d9c2068d"
 
 
 def contract_document() -> dict[str, Any]:
@@ -37,7 +37,7 @@ def test_golden_contract_is_complete_and_valid() -> None:
     document = contract_document()
     validate(document)
     assert document["openapi"].startswith("3.1")
-    assert len(operation_ids(document)) == 73
+    assert len(operation_ids(document)) == 77
 
 
 def test_all_contract_operations_are_real_routes() -> None:

@@ -1,6 +1,8 @@
 # Kosto-Vet backend
 
-Demo-backend на FastAPI, SQLAlchemy async и PostgreSQL. Канонический контракт — `contracts/openapi.v1.yaml` (57 операций); runtime `/openapi.json` возвращает именно этот golden-файл.
+Demo-backend на FastAPI, SQLAlchemy async и PostgreSQL. Канонический контракт — `contracts/openapi.v1.yaml` (77 операций); runtime `/openapi.json` возвращает именно этот golden-файл.
+
+Подробная карта слоёв, модулей, методов, данных и runtime-потоков: [docs/backend-service-map.md](docs/backend-service-map.md).
 
 ## Локальный запуск
 
