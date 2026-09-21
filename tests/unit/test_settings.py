@@ -86,6 +86,7 @@ def test_production_allows_manager_confirmed_delivery_and_requires_complete_s3()
         "customer_session_secret": SecretStr("a" * 40),
         "staff_session_secret": SecretStr("b" * 40),
         "csrf_secret": SecretStr("c" * 40),
+        "fixed_delivery_price_minor": None,
     }
     assert Settings(**common).fixed_delivery_price_minor is None
     with pytest.raises(ValidationError):

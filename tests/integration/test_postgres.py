@@ -160,7 +160,13 @@ async def test_quote_and_manager_confirmed_checkout_accept_json_product_ids(
         product_id = str(product.id)
         customer_id = customer.id
 
-    service = ApplicationService(Settings(_env_file=None))
+    service = ApplicationService(
+        Settings(
+            _env_file=None,
+            fixed_delivery_price_minor=None,
+            robokassa_mode="disabled",
+        )
+    )
     quote_payload = {
         "customer": {
             "name": "Integration customer",
