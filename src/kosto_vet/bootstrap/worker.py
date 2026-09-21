@@ -14,9 +14,9 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy import delete, or_, select
 
 from kosto_vet.bootstrap.settings import get_settings
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.database import Database
-from kosto_vet.infrastructure.models import (
+from kosto_vet.models import (
     IntegrationAttempt,
     IntegrationJob,
     MediaAsset,
@@ -174,9 +174,7 @@ async def _process_media(database: Database, job: IntegrationJob) -> dict[str, o
                 or ALLOWED_FORMATS[source_format] != asset.mime_type
             ):
                 raise ValueError("image signature or mime type is not allowed")
-            decoded = pyvips.Image.new_from_buffer(
-                source, "", access="sequential", fail_on="warning"
-            )
+            decoded = pyvips.Image.new_from_buffer(source, "", access="random", fail_on="warning")
             normalized = decoded.autorot()
             if normalized.width * normalized.height > MAX_PIXELS:
                 raise ValueError("image exceeds pixel limit")

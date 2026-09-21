@@ -21,10 +21,10 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from kosto_vet.api.routes import router
 from kosto_vet.bootstrap.settings import Settings, get_settings
 from kosto_vet.core.errors import DomainError
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.database import Database
-from kosto_vet.infrastructure.models import StaffSession
 from kosto_vet.infrastructure.security import decode_access_token
+from kosto_vet.models import StaffSession
 
 LOGGER = structlog.get_logger("kosto_vet.api")
 REQUESTS = Counter(

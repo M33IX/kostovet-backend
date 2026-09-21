@@ -4,14 +4,11 @@ from uuid import UUID
 
 import pytest
 
-from kosto_vet.core.types import (
-    Money,
-    OrderStatus,
-    StockState,
-    ensure_transition,
-    new_id,
-    stock_state,
-)
+from kosto_vet.core.identifiers import new_id
+from kosto_vet.core.inventory import StockState, stock_state
+from kosto_vet.core.money import Money
+from kosto_vet.core.orders import OrderStatus, ensure_transition
+from kosto_vet.services.shared import SessionBundle
 
 
 def test_uuid7_is_generated() -> None:
@@ -51,3 +48,16 @@ def test_order_state_machine() -> None:
         ensure_transition(OrderStatus.NEW, OrderStatus.SHIPPED)
     with pytest.raises(ValueError):
         ensure_transition(OrderStatus.COMPLETED, OrderStatus.CANCELED)
+
+
+def test_session_bundle_is_constructible() -> None:
+    session_id = new_id()
+    subject_id = new_id()
+
+    bundle = SessionBundle("access", "refresh", session_id, subject_id)
+
+    assert bundle.access == "access"
+    assert bundle.refresh == "refresh"
+    assert bundle.session_id == session_id
+    assert bundle.subject_id == subject_id
+    assert bundle.role is None

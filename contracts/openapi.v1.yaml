@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Kosto-Vet API
-  version: 0.5.0
-  description: Demo-release API contract for the FastAPI backend. Every operation explicitly declares its access class. Disabled future capabilities return FEATURE_DISABLED and do not imitate success.
+  version: 0.6.0
+  description: Stage-1 API contract for the FastAPI backend. Orders are confirmed by a manager without online billing. Every operation explicitly declares its access class; disabled future capabilities return FEATURE_DISABLED and do not imitate success.
   license:
     name: Proprietary
 servers:
@@ -287,7 +287,10 @@ paths:
       tags: [Orders]
       summary: Create local B2B request without invoice or stock reservation
       operationId: createQuoteOrder
-      security: []
+      security:
+        - CustomerSession: []
+          CsrfToken: []
+        - {}
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -318,6 +321,9 @@ paths:
     post:
       tags: [Orders]
       summary: Create B2C checkout and payment
+      description: >-
+        With billing disabled, creates an unpaid order request for manager
+        confirmation. Delivery may be confirmed later by the manager.
       operationId: createCheckoutOrder
       security:
         - CustomerSession: []
@@ -355,7 +361,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Stock data, delivery configuration, or sandbox payment capability is unavailable
+          description: Stock data or sandbox payment capability is unavailable
           content:
             application/json:
               schema:
@@ -1860,6 +1866,9 @@ components:
       properties:
         fixed_delivery_price:
           $ref: "#/components/schemas/Money"
+        delivery_price_pending:
+          type: boolean
+          description: True when delivery is confirmed by the manager after request creation.
         stock_reservation_ttl_seconds:
           type: integer
           const: 300
@@ -2403,7 +2412,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/OrderAcceptedResponse"
         - type: object
-          required: [payment, pricing, reservation_expires_at]
+          required: [pricing, delivery_price_pending, manager_confirmation_required]
           properties:
             payment:
               $ref: "#/components/schemas/PaymentConfirmation"
@@ -2413,6 +2422,10 @@ components:
               type: string
               format: date-time
               description: Server timestamp when the five-minute local stock reservation expires.
+            delivery_price_pending:
+              type: boolean
+            manager_confirmation_required:
+              type: boolean
 
     OrderPricing:
       type: object
@@ -2424,7 +2437,9 @@ components:
           $ref: "#/components/schemas/Money"
         total:
           $ref: "#/components/schemas/Money"
-      description: Delivery is a server-side fixed amount in the demo release.
+      description: >-
+        Delivery is zero in the provisional total when delivery_price_pending is
+        true; the manager confirms the final delivery amount out of band.
 
     PaymentConfirmation:
       type: object

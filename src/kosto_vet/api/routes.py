@@ -45,8 +45,10 @@ from kosto_vet.api.schemas import (
 )
 from kosto_vet.bootstrap.settings import Settings, get_settings
 from kosto_vet.core.errors import DomainError, feature_disabled, not_found
-from kosto_vet.core.types import utc_now
-from kosto_vet.infrastructure.models import (
+from kosto_vet.core.time import utc_now
+from kosto_vet.infrastructure.rate_limit import enforce_rate_limit
+from kosto_vet.infrastructure.security import issue_csrf, normalize_email, token_hash, verify_csrf
+from kosto_vet.models import (
     CustomerAccount,
     CustomerSession,
     Lead,
@@ -55,8 +57,6 @@ from kosto_vet.infrastructure.models import (
     StaffSession,
     StaffUser,
 )
-from kosto_vet.infrastructure.rate_limit import enforce_rate_limit
-from kosto_vet.infrastructure.security import issue_csrf, normalize_email, token_hash, verify_csrf
 from kosto_vet.services.application import ApplicationService, SessionBundle, manager
 
 router = APIRouter()
@@ -305,7 +305,9 @@ async def create_quote(
     payload: QuoteCreate,
     request: Request,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=16, max_length=128)],
+    x_csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
     app: ApplicationService = Depends(service),
 ) -> dict[str, Any]:
     await enforce_rate_limit(
@@ -316,11 +318,25 @@ async def create_quote(
         limit=10,
         window_seconds=900,
     )
+    principal: Principal | None = None
+    if request.cookies.get("kv_customer_access"):
+        from kosto_vet.api.dependencies import _principal
+
+        principal = await _principal(
+            token=request.cookies.get("kv_customer_access"),
+            audience="customer",
+            settings=settings,
+            session=session,
+        )
+        if not x_csrf_token or not verify_csrf(
+            settings, x_csrf_token, session_id=principal.session_id, audience="customer"
+        ):
+            raise DomainError("CSRF_INVALID", "Недействительный CSRF token.", 403)
     return await app.create_order(
         session,
         payload=payload.model_dump(mode="json"),
         key=idempotency_key,
-        customer_id=None,
+        customer_id=principal.id if principal else None,
         quote=True,
         request_id=request.state.request_id,
     )

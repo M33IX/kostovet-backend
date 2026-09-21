@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import CheckConstraint, Index, UniqueConstraint
 
-from kosto_vet.infrastructure.models import Base
+from kosto_vet.models import Base
 
 
 def test_demo_schema_contains_expected_operational_tables_only() -> None:

@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alembic import op
-from kosto_vet.infrastructure.models import (
+from kosto_vet.models import (
     Base,
     MediaAsset,
     MediaVariant,

@@ -11,9 +11,10 @@ import boto3
 from sqlalchemy import delete, select
 
 from kosto_vet.bootstrap.settings import get_settings
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.database import Database
-from kosto_vet.infrastructure.models import (
+from kosto_vet.infrastructure.security import hash_password, normalize_email
+from kosto_vet.models import (
     Category,
     LegalDocumentVersion,
     Product,
@@ -25,7 +26,6 @@ from kosto_vet.infrastructure.models import (
     StockItem,
     Warehouse,
 )
-from kosto_vet.infrastructure.security import hash_password, normalize_email
 
 CATEGORIES = [
     ("plates", "Пластины", "Для фиксации переломов длинных и плоских костей"),

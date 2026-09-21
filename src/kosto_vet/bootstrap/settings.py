@@ -143,8 +143,6 @@ class Settings(BaseSettings):
                 raise ValueError("production frontend origins require HTTPS")
             if any(origin.startswith("http://") for origin in self.admin_origins):
                 raise ValueError("production admin origins require HTTPS")
-            if self.fixed_delivery_price_minor is None:
-                raise ValueError("production requires configured delivery price")
             s3_values = (
                 self.s3_access_key_id,
                 self.s3_secret_access_key,

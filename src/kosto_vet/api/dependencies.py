@@ -11,9 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kosto_vet.bootstrap.settings import Settings, get_settings
 from kosto_vet.core.errors import DomainError, forbidden
-from kosto_vet.core.types import utc_now
-from kosto_vet.infrastructure.models import CustomerSession, StaffSession
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.security import AccessClaims, decode_access_token, verify_csrf
+from kosto_vet.models import CustomerSession, StaffSession
 
 
 @dataclass(frozen=True, slots=True)

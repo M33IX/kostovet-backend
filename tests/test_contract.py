@@ -13,7 +13,7 @@ from kosto_vet.bootstrap.api import app
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "openapi.v1.yaml"
-EXPECTED_SHA256 = "131d150d931055ec3288b06fa6987d9ebde3b0e3a06d8624cd5ad011d9c2068d"
+EXPECTED_SHA256 = "64a7b5383a2af41bd7ae51984f09bb026bf0217ecb9794e9b7a307476ccff07b"
 
 
 def contract_document() -> dict[str, Any]:

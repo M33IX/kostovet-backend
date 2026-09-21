@@ -6,9 +6,9 @@ from datetime import timedelta
 from sqlalchemy import delete, select, text, update
 
 from kosto_vet.bootstrap.settings import Mode, get_settings
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.database import Database
-from kosto_vet.infrastructure.models import (
+from kosto_vet.models import (
     IdempotencyRecord,
     IntegrationJob,
     MediaAsset,

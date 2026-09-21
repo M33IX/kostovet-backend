@@ -5,7 +5,7 @@ Revises:
 """
 
 from alembic import op
-from kosto_vet.infrastructure.models import Base
+from kosto_vet.models import Base
 
 revision = "0001_demo_schema"
 down_revision = None

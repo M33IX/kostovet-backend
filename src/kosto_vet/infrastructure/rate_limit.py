@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kosto_vet.bootstrap.settings import Settings
 from kosto_vet.core.errors import DomainError
-from kosto_vet.core.types import utc_now
-from kosto_vet.infrastructure.models import RateLimitBucket
+from kosto_vet.core.time import utc_now
+from kosto_vet.models import RateLimitBucket
 
 
 def scope_digest(settings: Settings, *, action: str, scope: str) -> str:

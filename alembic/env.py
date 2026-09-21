@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from kosto_vet.bootstrap.settings import get_settings
-from kosto_vet.infrastructure.models import Base
+from kosto_vet.models import Base
 
 config = context.config
 if config.config_file_name is not None:

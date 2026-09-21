@@ -45,6 +45,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 Demo seed в production автоматически не запускается. Production Robokassa всегда заблокирована в demo-сборке; юридический запуск, fiscalization, refunds и реальные платежи требуют отдельной реализации и приёмки. Backup-инструкция: `deploy/backup/RESTORE.md`.
 
+При `ROBOKASSA_MODE=disabled` checkout создаёт неоплаченную заявку со
+статусами `new` / `not_required`. Стоимость доставки можно не задавать:
+`FIXED_DELIVERY_PRICE_MINOR` отсутствует, предварительная сумма содержит только
+товары, а доставку и итог подтверждает менеджер. Платёжная попытка и складская
+резервация для такой заявки не создаются.
+
 ### Первичный импорт production-каталога
 
 Подготовьте reviewable manifest по шаблону `docs/catalog-import.example.json` и отдельный allowlist внешних ID по шаблону `docs/catalog-import-allowlist.example.txt`. Импортёр не запрашивает весь каталог у провайдера: он создаёт или обновляет только явно перечисленные позиции. В production allowlist обязателен, все товары по умолчанию остаются неопубликованными.

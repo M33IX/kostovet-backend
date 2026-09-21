@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kosto_vet.bootstrap.settings import Settings
 from kosto_vet.core.errors import DomainError
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.integrations import MoySkladAdapter
-from kosto_vet.infrastructure.models import Product, StockItem, SyncCursor, Warehouse
+from kosto_vet.models import Product, StockItem, SyncCursor, Warehouse
 
 
 def _integer_quantity(value: Any) -> int:

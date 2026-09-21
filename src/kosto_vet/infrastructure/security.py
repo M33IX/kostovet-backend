@@ -13,7 +13,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 from kosto_vet.bootstrap.settings import Settings
-from kosto_vet.core.types import utc_now
+from kosto_vet.core.time import utc_now
 
 _password_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 _dummy_hash = _password_hasher.hash("not-a-real-password-used-for-timing-only")
