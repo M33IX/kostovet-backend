@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from alembic.config import Config
+from pydantic import SecretStr
 from sqlalchemy import func, select, text
 
 from alembic import command
@@ -29,6 +30,7 @@ from kosto_vet.models import (
     Warehouse,
 )
 from kosto_vet.services.application import ApplicationService
+from kosto_vet.services.moysklad import sync_moysklad
 
 pytestmark = pytest.mark.postgres
 ROOT = Path(__file__).resolve().parents[2]
@@ -91,6 +93,94 @@ async def test_rate_limit_bucket_persists_across_sessions(database: Database) ->
                 window_seconds=60,
             )
     assert error.value.code == "RATE_LIMITED"
+
+
+async def test_moysklad_sync_creates_new_products_and_stock(
+    database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = uuid4().hex
+    product_external_id = f"product-{marker}"
+    folder_external_id = f"folder-{marker}"
+    warehouse_external_id = f"warehouse-{marker}"
+    price_type_id = f"price-{marker}"
+
+    async def fetch_pages(
+        _adapter: object,
+        path: str,
+        *,
+        limit: int = 100,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, object]]:
+        del limit, params
+        if path == "entity/productfolder":
+            return [{"id": folder_external_id, "name": "Винты"}]
+        if path == "entity/product":
+            return [
+                {
+                    "id": product_external_id,
+                    "article": f"AUTO-{marker}",
+                    "name": "Автоматически импортированный товар",
+                    "productFolder": {
+                        "meta": {"href": f"https://example.test/productfolder/{folder_external_id}"}
+                    },
+                    "salePrices": [
+                        {
+                            "value": 123_400,
+                            "priceType": {
+                                "meta": {"href": f"https://example.test/{price_type_id}"}
+                            },
+                        }
+                    ],
+                    "archived": False,
+                }
+            ]
+        if path == "report/stock/all":
+            return [
+                {
+                    "assortmentId": product_external_id,
+                    "article": f"AUTO-{marker}",
+                    "stock": 7,
+                    "reserve": 2,
+                    "quantity": 5,
+                    "inTransit": 1,
+                }
+            ]
+        raise AssertionError(f"unexpected MoySklad path: {path}")
+
+    monkeypatch.setattr(
+        "kosto_vet.infrastructure.integrations.MoySkladAdapter.fetch_pages", fetch_pages
+    )
+    settings = Settings(
+        _env_file=None,
+        moysklad_mode="sandbox",
+        moysklad_access_token=SecretStr("test-token"),
+        moysklad_warehouse_id=warehouse_external_id,
+        moysklad_price_type_id=price_type_id,
+    )
+    async with database.sessions() as session:
+        first = await sync_moysklad(session, settings, kind="catalog", full=True)
+    async with database.sessions() as session:
+        second = await sync_moysklad(session, settings, kind="catalog", full=True)
+    async with database.sessions() as session:
+        stock_result = await sync_moysklad(session, settings, kind="stock", full=True)
+
+    async with database.sessions() as session:
+        products = (
+            await session.scalars(select(Product).where(Product.moysklad_id == product_external_id))
+        ).all()
+        product = products[0]
+        category = await session.get(Category, product.category_id)
+        stock = await session.scalar(select(StockItem).where(StockItem.product_id == product.id))
+
+    assert first["created_count"] == 1
+    assert second["created_count"] == 0
+    assert len(products) == 1
+    assert product.is_active is True
+    assert product.is_published is True
+    assert product.final_price_minor == 123_400
+    assert category is not None and category.slug == "screws"
+    assert stock_result["processed_count"] == 1
+    assert stock is not None and stock.available_quantity == 5
 
 
 async def test_quote_and_manager_confirmed_checkout_accept_json_product_ids(

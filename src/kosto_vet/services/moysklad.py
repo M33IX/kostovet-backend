@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -11,7 +12,91 @@ from kosto_vet.bootstrap.settings import Settings
 from kosto_vet.core.errors import DomainError
 from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.integrations import MoySkladAdapter
-from kosto_vet.models import Product, StockItem, SyncCursor, Warehouse
+from kosto_vet.models import Category, Product, StockItem, SyncCursor, Warehouse
+
+CATEGORY_ORDER = {"plates": 0, "screws": 1, "tools": 2, "sutures": 3}
+
+
+def category_slug(name: str, external_id: str) -> str:
+    normalized = name.casefold()
+    for needle, slug in (
+        ("пластин", "plates"),
+        ("винт", "screws"),
+        ("шов", "sutures"),
+        ("инструмент", "tools"),
+    ):
+        if needle in normalized:
+            return slug
+    return f"group-{external_id.split('-', 1)[0]}"
+
+
+def product_slug(category: str, article: str, external_id: str) -> str:
+    transliterated = article.casefold().translate(str.maketrans("кхрс", "khrs"))
+    normalized = re.sub(r"[^a-z0-9]+", "-", transliterated).strip("-")
+    return f"{category}-{normalized or external_id.split('-', 1)[0]}"
+
+
+def _folder_id(row: dict[str, Any]) -> str:
+    return (
+        str(row.get("productFolder", {}).get("meta", {}).get("href", ""))
+        .rstrip("/")
+        .rsplit("/", 1)[-1]
+    )
+
+
+async def _catalog_categories(
+    session: AsyncSession, folders: list[dict[str, Any]]
+) -> dict[str, Category]:
+    by_folder: dict[str, Category] = {}
+    by_slug: dict[str, Category] = {}
+    for position, folder in enumerate(folders):
+        external_id = str(folder.get("id") or "")
+        if not external_id:
+            continue
+        title = str(folder.get("name") or "Каталог")
+        slug = category_slug(title, external_id)
+        category = by_slug.get(slug)
+        if category is None:
+            category = await session.scalar(select(Category).where(Category.slug == slug))
+        if category is None:
+            category = Category(
+                slug=slug,
+                path=slug,
+                depth=0,
+                title=title,
+                description=str(folder.get("description") or ""),
+                sort_order=CATEGORY_ORDER.get(slug, len(CATEGORY_ORDER) + position),
+                is_active=True,
+                is_published=True,
+            )
+            session.add(category)
+            await session.flush()
+        else:
+            category.title = title
+            category.description = str(folder.get("description") or "")
+            category.is_active = True
+            category.is_published = True
+        by_slug[slug] = category
+        by_folder[external_id] = category
+    return by_folder
+
+
+async def _fallback_category(session: AsyncSession) -> Category:
+    fallback = await session.scalar(select(Category).where(Category.slug == "moysklad"))
+    if fallback is None:
+        fallback = Category(
+            slug="moysklad",
+            path="moysklad",
+            depth=0,
+            title="Каталог",
+            description="",
+            sort_order=999,
+            is_active=True,
+            is_published=True,
+        )
+        session.add(fallback)
+        await session.flush()
+    return fallback
 
 
 def _integer_quantity(value: Any) -> int:
@@ -79,6 +164,7 @@ async def sync_moysklad(
 
     adapter = MoySkladAdapter(settings)
     processed = 0
+    created = 0
     skipped = 0
     if kind == "catalog":
         cursor = await session.scalar(
@@ -89,26 +175,55 @@ async def sync_moysklad(
         params = None
         if cursor and cursor.watermark and not full:
             params = {"filter": f"updated>{cursor.watermark}"}
+        folders = await adapter.fetch_pages("entity/productfolder")
+        categories = await _catalog_categories(session, folders)
+        fallback_category: Category | None = None
         rows = await adapter.fetch_pages("entity/product", params=params)
         for row in rows:
             external_id = str(row.get("id") or "")
-            article = str(row.get("article") or row.get("code") or "")
+            article = str(row.get("article") or row.get("code") or external_id)
             if not external_id:
                 skipped += 1
                 continue
             product = await _product_by_identity(session, external_id, article)
-            if not product:
+            price_minor = _price_minor(row, settings.moysklad_price_type_id)
+            if product is None and price_minor is None:
                 skipped += 1
                 continue
-            price_minor = _price_minor(row, settings.moysklad_price_type_id)
+            category = categories.get(_folder_id(row))
+            if category is None:
+                fallback_category = fallback_category or await _fallback_category(session)
+                category = fallback_category
+            if product is None:
+                slug = product_slug(category.slug, article, external_id)
+                slug_owner = await session.scalar(select(Product).where(Product.slug == slug))
+                if slug_owner is not None:
+                    slug = f"{slug}-{external_id.split('-', 1)[0]}"
+                product = Product(
+                    category_id=category.id,
+                    moysklad_id=external_id,
+                    article=article,
+                    slug=slug,
+                    name=str(row.get("name") or article),
+                    description=str(row.get("description") or "") or None,
+                    final_price_minor=price_minor,
+                    is_active=not bool(row.get("archived")),
+                    is_published=not bool(row.get("archived")),
+                )
+                session.add(product)
+                created += 1
             product.moysklad_id = external_id
-            product.article = article or product.article
+            product.category_id = category.id
+            product.article = article
             product.name = str(row.get("name") or product.name)
             product.description = str(row.get("description") or product.description or "")
             if price_minor is not None:
                 product.final_price_minor = price_minor
+            product.is_active = not bool(row.get("archived"))
+            product.is_published = product.is_active
             product.updated_at = _provider_updated_at(row)
-            product.version += 1
+            if product not in session.new:
+                product.version += 1
             processed += 1
         await _checkpoint(session, "catalog")
     elif kind == "stock":
@@ -166,6 +281,7 @@ async def sync_moysklad(
     await session.commit()
     return {
         "processed_count": processed,
+        "created_count": created,
         "skipped_count": skipped,
         "resource": kind,
         "mode": "full" if full else "incremental",

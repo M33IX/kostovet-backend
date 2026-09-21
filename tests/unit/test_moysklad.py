@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from kosto_vet.services.moysklad import _integer_quantity, _price_minor
+from kosto_vet.services.moysklad import (
+    _folder_id,
+    _integer_quantity,
+    _price_minor,
+    category_slug,
+    product_slug,
+)
 
 
 def test_moysklad_quantities_are_integral_and_safe() -> None:
@@ -18,3 +24,15 @@ def test_configured_price_type_is_selected_in_minor_units() -> None:
     }
     assert _price_minor(row, "demo") == 114_300
     assert _price_minor(row, "missing") is None
+
+
+def test_moysklad_identity_maps_to_stable_catalog_slugs() -> None:
+    assert category_slug("Винты", "folder-id") == "screws"
+    assert category_slug("Расходники", "folder-id") == "group-folder"
+    assert product_slug("screws", "КХ-10", "product-id") == "screws-kh-10"
+    assert (
+        _folder_id(
+            {"productFolder": {"meta": {"href": "https://ms/entity/productfolder/folder-id"}}}
+        )
+        == "folder-id"
+    )

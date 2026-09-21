@@ -18,7 +18,7 @@ from kosto_vet.models import (
 )
 
 
-async def run_once(database: Database) -> None:
+async def run_once(database: Database, *, force_moysklad: bool = False) -> None:
     settings = get_settings()
     async with database.sessions() as session:
         locked = await session.scalar(text("SELECT pg_try_advisory_xact_lock(4937562281)"))
@@ -76,26 +76,37 @@ async def run_once(database: Database) -> None:
                 ("stock", settings.moysklad_stock_sync_interval_seconds),
             )
             for kind, interval_seconds in schedules:
-                recent = await session.scalar(
-                    select(IntegrationJob.id).where(
-                        IntegrationJob.provider == "moysklad",
-                        IntegrationJob.kind == kind,
-                        IntegrationJob.created_at
-                        >= utc_now() - timedelta(seconds=interval_seconds),
-                    )
+                query = select(IntegrationJob.id).where(
+                    IntegrationJob.provider == "moysklad",
+                    IntegrationJob.kind == kind,
                 )
+                if force_moysklad:
+                    query = query.where(IntegrationJob.status.in_(["queued", "running"]))
+                else:
+                    query = query.where(
+                        IntegrationJob.created_at >= utc_now() - timedelta(seconds=interval_seconds)
+                    )
+                recent = await session.scalar(query)
                 if not recent:
                     session.add(
-                        IntegrationJob(provider="moysklad", kind=kind, status="queued", progress={})
+                        IntegrationJob(
+                            provider="moysklad",
+                            kind=kind,
+                            status="queued",
+                            cursor="full" if force_moysklad and kind == "catalog" else None,
+                            progress={},
+                        )
                     )
         await session.commit()
 
 
 async def main() -> None:
     database = Database(get_settings())
+    first_run = True
     try:
         while True:
-            await run_once(database)
+            await run_once(database, force_moysklad=first_run)
+            first_run = False
             await asyncio.sleep(60)
     finally:
         await database.close()

@@ -3,37 +3,19 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from kosto_vet.bootstrap.settings import Settings
 from kosto_vet.infrastructure.integrations import MoySkladAdapter
-from kosto_vet.services.moysklad import _integer_quantity, _price_minor
-
-CATEGORY_ORDER = {"plates": 0, "screws": 1, "tools": 2, "sutures": 3}
-
-
-def category_slug(name: str, external_id: str) -> str:
-    normalized = name.casefold()
-    for needle, slug in (
-        ("пластин", "plates"),
-        ("винт", "screws"),
-        ("шов", "sutures"),
-        ("инструмент", "tools"),
-    ):
-        if needle in normalized:
-            return slug
-    return f"group-{external_id.split('-', 1)[0]}"
-
-
-def product_slug(category: str, article: str, external_id: str) -> str:
-    transliterated = article.casefold().translate(
-        str.maketrans({"к": "k", "х": "h", "р": "r", "с": "s"})
-    )
-    normalized = re.sub(r"[^a-z0-9]+", "-", transliterated).strip("-")
-    return f"{category}-{normalized or external_id.split('-', 1)[0]}"
+from kosto_vet.services.moysklad import (
+    CATEGORY_ORDER,
+    _integer_quantity,
+    _price_minor,
+    category_slug,
+    product_slug,
+)
 
 
 def external_id(row: dict[str, Any]) -> str:
