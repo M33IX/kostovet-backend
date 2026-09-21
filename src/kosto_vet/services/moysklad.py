@@ -273,7 +273,8 @@ async def sync_moysklad(
             stock.source_updated_at = _provider_updated_at(row)
             stock.synced_at = utc_now()
             stock.is_stale = False
-            stock.version += 1
+            if stock not in session.new:
+                stock.version += 1
             processed += 1
         await _checkpoint(session, "stock")
     else:
