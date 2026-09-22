@@ -4,11 +4,12 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -193,6 +194,51 @@ class MoySkladAdapter:
                     break
                 offset += limit
         return rows
+
+    async def download_image(self, download_href: str) -> bytes:
+        url = urlsplit(download_href)
+        try:
+            ipaddress.ip_address(url.hostname or "")
+        except ValueError:
+            ip_literal = False
+        else:
+            ip_literal = True
+        if (
+            url.scheme != "https"
+            or not url.hostname
+            or ip_literal
+            or url.hostname == "localhost"
+            or url.hostname.endswith((".localhost", ".local", ".internal"))
+            or url.username
+            or url.password
+        ):
+            raise ValueError("MoySklad image download URL must use HTTPS")
+        token = self.settings.moysklad_access_token
+        if not token:
+            raise DomainError("INTEGRATION_CONFIG_INVALID", "МойСклад не настроен.", 503)
+        api_host = urlsplit(self.settings.moysklad_api_base_url).hostname
+        headers = (
+            {"Authorization": f"Bearer {token.get_secret_value()}"}
+            if url.hostname in {api_host, "online.moysklad.ru"}
+            else {}
+        )
+        body = bytearray()
+        async with (
+            httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=5.0), follow_redirects=True
+            ) as client,
+            client.stream("GET", download_href, headers=headers) as response,
+        ):
+            if response.status_code == 429:
+                raise DomainError("PROVIDER_RATE_LIMITED", "МойСклад ограничил запросы.", 503, True)
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk)
+                if len(body) > 20 * 1024 * 1024:
+                    raise ValueError("MoySklad image exceeds 20 MiB")
+        if not body:
+            raise ValueError("MoySklad image is empty")
+        return bytes(body)
 
 
 def encode_pkce_verifier(verifier: str) -> str:

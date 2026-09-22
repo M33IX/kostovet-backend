@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     moysklad_price_type_id: str | None = None
     moysklad_catalog_sync_interval_seconds: int = Field(default=900, ge=60)
     moysklad_stock_sync_interval_seconds: int = Field(default=60, ge=60)
+    moysklad_media_sync_interval_seconds: int = Field(default=3600, ge=60)
 
     robokassa_mode: Mode = Mode.DISABLED
     fiscalization_mode: Mode = Mode.DISABLED

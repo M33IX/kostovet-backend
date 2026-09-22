@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from alembic.config import Config
+from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy import func, select, text
 
@@ -22,15 +24,19 @@ from kosto_vet.models import (
     CartItem,
     Category,
     CustomerAccount,
+    IntegrationJob,
     Order,
     PaymentAttempt,
     Product,
+    ProductImage,
+    ProductImageVariant,
     StockItem,
     StockReservation,
     Warehouse,
 )
 from kosto_vet.services.application import ApplicationService
 from kosto_vet.services.moysklad import sync_moysklad
+from kosto_vet.services.moysklad_media import sync_moysklad_product_media
 
 pytestmark = pytest.mark.postgres
 ROOT = Path(__file__).resolve().parents[2]
@@ -171,6 +177,13 @@ async def test_moysklad_sync_creates_new_products_and_stock(
         product = products[0]
         category = await session.get(Category, product.category_id)
         stock = await session.scalar(select(StockItem).where(StockItem.product_id == product.id))
+        media_jobs = (
+            await session.scalars(
+                select(IntegrationJob).where(
+                    IntegrationJob.provider == "moysklad", IntegrationJob.kind == "media"
+                )
+            )
+        ).all()
 
     assert first["created_count"] == 1
     assert second["created_count"] == 0
@@ -181,6 +194,149 @@ async def test_moysklad_sync_creates_new_products_and_stock(
     assert category is not None and category.slug == "screws"
     assert stock_result["processed_count"] == 1
     assert stock is not None and stock.available_quantity == 5
+    assert media_jobs
+
+
+async def test_moysklad_media_sync_uploads_once_and_hides_missing_images(
+    database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = uuid4().hex
+    external_id = f"product-{marker}"
+    async with database.sessions() as session:
+        category = Category(
+            slug=f"media-{marker}",
+            path=f"media-{marker}",
+            title="Media test",
+            description="",
+        )
+        session.add(category)
+        await session.flush()
+        product = Product(
+            category_id=category.id,
+            moysklad_id=external_id,
+            article=marker,
+            slug=f"media-product-{marker}",
+            name="Photo product",
+            final_price_minor=100,
+        )
+        session.add(product)
+        await session.commit()
+        product_id = product.id
+
+    original = BytesIO()
+    Image.new("RGB", (800, 600), "green").save(original, format="PNG")
+    provider_rows: list[dict[str, object]] = [
+        {
+            "id": "image-1",
+            "meta": {"downloadHref": "https://storage.example.test/image-1"},
+        }
+    ]
+    uploads: list[dict[str, object]] = []
+
+    async def fetch_pages(
+        _adapter: object, path: str, **_kwargs: object
+    ) -> list[dict[str, object]]:
+        assert path == f"entity/product/{external_id}/images"
+        return provider_rows
+
+    async def download_image(_adapter: object, _url: str) -> bytes:
+        return original.getvalue()
+
+    class FakeS3:
+        def put_object(self, **kwargs: object) -> None:
+            uploads.append(kwargs)
+
+    monkeypatch.setattr(
+        "kosto_vet.infrastructure.integrations.MoySkladAdapter.fetch_pages", fetch_pages
+    )
+    monkeypatch.setattr(
+        "kosto_vet.infrastructure.integrations.MoySkladAdapter.download_image", download_image
+    )
+    monkeypatch.setattr(
+        "kosto_vet.services.moysklad_media.boto3.client", lambda *_args, **_kwargs: FakeS3()
+    )
+    settings = Settings(
+        _env_file=None,
+        moysklad_mode="sandbox",
+        moysklad_access_token=SecretStr("test-token"),
+        moysklad_warehouse_id="warehouse",
+        moysklad_price_type_id="price",
+        s3_access_key_id=SecretStr("access"),
+        s3_secret_access_key=SecretStr("secret"),
+        s3_public_media_bucket="public",
+        s3_public_base_url="https://cdn.example.test",
+    )
+    async with database.sessions() as session:
+        first = await sync_moysklad_product_media(session, settings, external_id)
+    async with database.sessions() as session:
+        second = await sync_moysklad_product_media(session, settings, external_id)
+    assert first["uploaded_count"] == 1
+    assert second["uploaded_count"] == 0
+    assert len(uploads) == 3
+    async with database.sessions() as session:
+        imported = await session.scalar(
+            select(ProductImage).where(ProductImage.product_id == product_id)
+        )
+        assert imported is not None
+        assert imported.public_url is not None
+        assert imported.is_primary is True
+        assert imported.status == "ready"
+        first_url = imported.public_url
+        variants = (
+            await session.scalars(
+                select(ProductImageVariant).where(ProductImageVariant.image_id == imported.id)
+            )
+        ).all()
+        assert {variant.kind for variant in variants} == {"thumb", "card", "detail"}
+        session.add(
+            ProductImage(
+                product_id=product_id,
+                source="manager",
+                status="ready",
+                public_url="https://cdn.example.test/manual.webp",
+                is_primary=True,
+            )
+        )
+        await session.commit()
+
+    replacement = BytesIO()
+    Image.new("RGB", (800, 600), "red").save(replacement, format="PNG")
+    original = replacement
+    async with database.sessions() as session:
+        updated = await sync_moysklad_product_media(session, settings, external_id)
+    assert updated["uploaded_count"] == 1
+    assert len(uploads) == 6
+    assert len({upload["Key"] for upload in uploads}) == 3
+    async with database.sessions() as session:
+        refreshed = await session.scalar(
+            select(ProductImage).where(
+                ProductImage.product_id == product_id,
+                ProductImage.source == "moysklad:image-1",
+            )
+        )
+        assert refreshed is not None
+        assert refreshed.public_url != first_url
+        refreshed_variants = (
+            await session.scalars(
+                select(ProductImageVariant).where(ProductImageVariant.image_id == refreshed.id)
+            )
+        ).all()
+        assert len(refreshed_variants) == 3
+
+    provider_rows.clear()
+    async with database.sessions() as session:
+        missing = await sync_moysklad_product_media(session, settings, external_id)
+    assert missing["removed_count"] == 1
+    async with database.sessions() as session:
+        images = (
+            await session.scalars(select(ProductImage).where(ProductImage.product_id == product_id))
+        ).all()
+        hidden = next(image for image in images if image.source.startswith("moysklad:"))
+        manual = next(image for image in images if image.source == "manager")
+        assert hidden.status == "deleted"
+        assert hidden.public_url is None
+        assert manual.status == "ready"
+        assert manual.public_url == "https://cdn.example.test/manual.webp"
 
 
 async def test_quote_and_manager_confirmed_checkout_accept_json_product_ids(

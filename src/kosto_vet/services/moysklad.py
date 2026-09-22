@@ -12,7 +12,7 @@ from kosto_vet.bootstrap.settings import Settings
 from kosto_vet.core.errors import DomainError
 from kosto_vet.core.time import utc_now
 from kosto_vet.infrastructure.integrations import MoySkladAdapter
-from kosto_vet.models import Category, Product, StockItem, SyncCursor, Warehouse
+from kosto_vet.models import Category, IntegrationJob, Product, StockItem, SyncCursor, Warehouse
 
 CATEGORY_ORDER = {"plates": 0, "screws": 1, "tools": 2, "sutures": 3}
 
@@ -226,6 +226,10 @@ async def sync_moysklad(
                 product.version += 1
             processed += 1
         await _checkpoint(session, "catalog")
+        if full:
+            session.add(
+                IntegrationJob(provider="moysklad", kind="media", status="queued", progress={})
+            )
     elif kind == "stock":
         rows = await adapter.fetch_pages(
             "report/stock/all",

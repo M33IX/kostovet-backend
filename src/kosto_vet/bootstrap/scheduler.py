@@ -74,8 +74,12 @@ async def run_once(database: Database, *, force_moysklad: bool = False) -> None:
             schedules = (
                 ("catalog", settings.moysklad_catalog_sync_interval_seconds),
                 ("stock", settings.moysklad_stock_sync_interval_seconds),
+                ("media", settings.moysklad_media_sync_interval_seconds),
             )
             for kind, interval_seconds in schedules:
+                if force_moysklad and kind == "media":
+                    # Full catalog sync enqueues the first media pass after products exist.
+                    continue
                 query = select(IntegrationJob.id).where(
                     IntegrationJob.provider == "moysklad",
                     IntegrationJob.kind == kind,

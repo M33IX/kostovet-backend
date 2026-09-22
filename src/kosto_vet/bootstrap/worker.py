@@ -24,6 +24,7 @@ from kosto_vet.models import (
     OutboxEvent,
 )
 from kosto_vet.services.moysklad import sync_moysklad
+from kosto_vet.services.moysklad_media import enqueue_moysklad_media, sync_moysklad_product_media
 
 LEASE_SECONDS = 300
 MAX_ATTEMPTS = 8
@@ -124,6 +125,12 @@ async def _claim_job(database: Database) -> IntegrationJob | None:
 async def _run_job(database: Database, job: IntegrationJob) -> dict[str, object]:
     if job.provider == "moysklad":
         async with database.sessions() as session:
+            if job.kind == "media":
+                return await enqueue_moysklad_media(session)
+            if job.kind == "product_media":
+                if not job.cursor:
+                    raise ValueError("MoySklad media job has no product ID")
+                return await sync_moysklad_product_media(session, get_settings(), job.cursor)
             return await sync_moysklad(
                 session, get_settings(), kind=job.kind, full=job.cursor == "full"
             )
