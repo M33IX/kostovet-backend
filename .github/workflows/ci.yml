@@ -45,6 +45,17 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run openapi-spec-validator contracts/openapi.v1.yaml
+      - name: Validate Caddy configuration for IP and domain
+        run: |
+          for site in http://127.0.0.1 shop.example.test; do
+            docker run --rm \
+              -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
+              -e FRONTEND_HOST="$site" \
+              -e FRONTEND_UPSTREAM=frontend:80 \
+              -e API_UPSTREAM=api:8000 \
+              -e ADMIN_ALLOWED_CIDRS="127.0.0.1/32 ::1/128" \
+              caddy:2.10-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
       - run: uv run pytest --cov --cov-report=term-missing
       - run: uv run alembic upgrade head
       - run: uv run alembic downgrade base

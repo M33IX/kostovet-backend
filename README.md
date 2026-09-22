@@ -36,7 +36,9 @@ docker compose --profile tools run --rm seed
 
 ## Production template
 
-Задайте immutable `BACKEND_IMAGE`, `FRONTEND_IMAGE`, точные `API_HOST`/`FRONTEND_HOST`, `ADMIN_ALLOWED_CIDRS`, независимые secrets и production PostgreSQL credentials:
+Задайте immutable `BACKEND_IMAGE`, `FRONTEND_IMAGE`, единый адрес сайта `FRONTEND_HOST`, `ADMIN_ALLOWED_CIDRS`, независимые secrets и production PostgreSQL credentials. Caddy отправляет `/api/*`, `/health/*`, `/openapi.json`, `/docs` и `/metrics` в backend, остальные пути — во frontend. Фронтенд должен собираться с пустым `VITE_API_BASE_URL`, чтобы обращаться к `/api` на текущем адресе страницы.
+
+Для временного HTTP по IP укажите `FRONTEND_HOST=http://SERVER_IP`. При переходе на домен в настройках Caddy достаточно заменить это на `FRONTEND_HOST=shop.example.ru`: Caddy автоматически включит HTTPS, когда DNS указывает на сервер и порты 80/443 доступны. В backend `.env` одновременно обновите `API_PUBLIC_BASE_URL=https://shop.example.ru`, `FRONTEND_ORIGINS=https://shop.example.ru` и `TRUSTED_HOSTS=shop.example.ru`; настройте точные `ADMIN_ORIGINS` и OAuth callback, если они используются. Для HTTP по IP cookie с `COOKIE_SECURE=true` не будут работать; production-режим backend требует HTTPS.
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml config

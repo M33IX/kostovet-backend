@@ -2,7 +2,6 @@ services:
   caddy:
     environment:
       FRONTEND_HOST: ${FRONTEND_HOST:?required}
-      API_HOST: ${API_HOST:?required}
       FRONTEND_UPSTREAM: frontend:80
       API_UPSTREAM: api:8000
       ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:?required}
