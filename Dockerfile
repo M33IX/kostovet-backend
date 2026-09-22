@@ -21,6 +21,8 @@ COPY alembic ./alembic
 COPY contracts ./contracts
 COPY src ./src
 RUN uv sync --frozen --no-dev
+# Runtime uses uv's prebuilt environment; pip/setuptools are not needed after the build.
+RUN python -m pip uninstall --yes pip setuptools
 USER 10001:10001
 EXPOSE 8000
 CMD ["uv", "run", "--frozen", "--no-sync", "uvicorn", "kosto_vet.bootstrap.api:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
